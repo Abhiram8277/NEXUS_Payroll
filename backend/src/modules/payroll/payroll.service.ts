@@ -138,6 +138,24 @@ export class PayrollService {
     }
 
     if (isPreviewOnly) {
+      const items = calculatedEmployees.map((ce) => ({
+        employeeId: ce.employee.id,
+        empCode: ce.employee.employeeId,
+        name: `${ce.employee.firstName} ${ce.employee.lastName}`,
+        department: ce.employee.department?.name || 'N/A',
+        workingDays: ce.calc.workingDays,
+        presentDays: ce.calc.presentDays,
+        lopDays: ce.calc.lopDays,
+        gross: ce.calc.grossEarnings,
+        deductions: ce.calc.totalDeductions,
+        net: ce.calc.netSalary,
+        grossEarnings: ce.calc.grossEarnings,
+        totalDeductions: ce.calc.totalDeductions,
+        netSalary: ce.calc.netSalary,
+        employerCost: ce.calc.employerContributions,
+        components: ce.calc.components,
+      }));
+
       return {
         month,
         year,
@@ -147,19 +165,8 @@ export class PayrollService {
         totalDeductions,
         totalEmployerCost,
         totalNet,
-        employees: calculatedEmployees.map((ce) => ({
-          employeeId: ce.employee.employeeId,
-          name: `${ce.employee.firstName} ${ce.employee.lastName}`,
-          department: ce.employee.department?.name || 'N/A',
-          workingDays: ce.calc.workingDays,
-          presentDays: ce.calc.presentDays,
-          lopDays: ce.calc.lopDays,
-          gross: ce.calc.grossEarnings,
-          deductions: ce.calc.totalDeductions,
-          net: ce.calc.netSalary,
-          employerCost: ce.calc.employerContributions,
-          components: ce.calc.components,
-        })),
+        items,
+        employees: items,
       };
     }
 
@@ -169,7 +176,7 @@ export class PayrollService {
       const run = await tx.payrollRun.upsert({
         where: { month_year: { month, year } },
         update: {
-          status: PayrollStatus.REVIEW,
+          status: PayrollStatus.DRAFT,
           totalEmployees: calculatedEmployees.length,
           totalGross,
           totalDeductions,
@@ -181,7 +188,7 @@ export class PayrollService {
         create: {
           month,
           year,
-          status: PayrollStatus.REVIEW,
+          status: PayrollStatus.DRAFT,
           totalEmployees: calculatedEmployees.length,
           totalGross,
           totalDeductions,
@@ -313,7 +320,7 @@ export class PayrollService {
 
       // Generate payslip records for all employees in this run
       for (const pe of run.payrollEmployees) {
-        const payslipNumber = `NEXUS-${run.year}${String(run.month).padStart(2, '0')}-${pe.employeeId.slice(0, 8).toUpperCase()}`;
+        const payslipNumber = `NEXUS-${run.year}-${String(run.month).padStart(2, '0')}-${pe.employeeId.slice(0, 8).toUpperCase()}`;
         await tx.payslip.upsert({
           where: { payrollEmployeeId: pe.id },
           update: {

@@ -35,7 +35,12 @@ export class PayrollController {
         false
       );
       return sendSuccess(res, `Payroll calculated for ${month}/${year}.`, result);
-    } catch (e) { return next(e); }
+    } catch (e: any) {
+      if (e.message && e.message.includes('LOCKED')) {
+        return sendError(res, e.message, [], 400);
+      }
+      return next(e);
+    }
   }
 
   static async list(req: Request, res: Response, next: NextFunction) {

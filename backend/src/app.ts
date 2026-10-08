@@ -83,6 +83,19 @@ apiV1.use('/reports', reportsRoutes);
 
 app.use('/api/v1', apiV1);
 
+// Serve frontend build if dist directory exists
+const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+const indexHtml = path.join(frontendDist, 'index.html');
+if (require('fs').existsSync(indexHtml)) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+      return next();
+    }
+    res.sendFile(indexHtml);
+  });
+}
+
 // Error handlers
 app.use(notFoundHandler);
 app.use(errorHandler);

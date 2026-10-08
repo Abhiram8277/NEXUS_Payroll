@@ -6,12 +6,26 @@ import { Role } from '@prisma/client';
 export class AttendanceController {
   static async mark(req: Request, res: Response, next: NextFunction) {
     try {
-      const { employeeId, date, status, remarks } = req.body;
-      if (!employeeId || !date || !status) {
+      const records = req.body.records || (req.body.employeeId ? [req.body] : null);
+      if (!records || !Array.isArray(records) || records.length === 0) {
         return sendError(res, 'employeeId, date, and status are required.', [], 422);
       }
-      const data = await AttendanceService.markAttendance({ employeeId, date, status, remarks });
-      return sendSuccess(res, 'Attendance marked successfully.', data);
+
+      const results = [];
+      for (const rec of records) {
+        if (!rec.employeeId || !rec.date || !rec.status) {
+          return sendError(res, 'Each record requires employeeId, date, and status.', [], 422);
+        }
+        const data = await AttendanceService.markAttendance({
+          employeeId: rec.employeeId,
+          date: rec.date,
+          status: rec.status,
+          remarks: rec.remarks,
+        });
+        results.push(data);
+      }
+
+      return sendSuccess(res, 'Attendance marked successfully.', results.length === 1 ? results[0] : results);
     } catch (e) { return next(e); }
   }
 
