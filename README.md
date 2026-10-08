@@ -51,11 +51,11 @@ Use these pre-seeded accounts for immediate evaluation:
 |---|---|---|---|---|
 | **Admin** | `admin@nexuspayroll.com` | — | `Admin@12345` | Complete platform control |
 | **HR Admin** | `hr@nexuspayroll.com` | — | `Hr@12345` | Operations & Payroll Preparation |
-| **Employee 1** | `rahul.sharma@nexuspayroll.com` | `EMP001` | `Emp@12345` | Staff Portal (Engineering) |
-| **Employee 2** | `priya.patel@nexuspayroll.com` | `EMP002` | `Emp@12345` | Staff Portal (Product) |
-| **Employee 3** | `amit.kumar@nexuspayroll.com` | `EMP003` | `Emp@12345` | Staff Portal (Operations) |
+| **Employee 1** | `rahul.sharma@nexuspayroll.com` | `EMP-101` | `Emp@12345` | Staff Portal (Engineering) |
+| **Employee 2** | `priya.patel@nexuspayroll.com` | `EMP-102` | `Emp@12345` | Staff Portal (Product) |
+| **Employee 3** | `amit.kumar@nexuspayroll.com` | `EMP-103` | `Emp@12345` | Staff Portal (Operations) |
 
-*Note: The login screen supports entering either email or Employee ID (e.g. `EMP001`).*
+*Note: The login screen supports entering either email or Employee ID (e.g. `EMP-101`).*
 
 ---
 
