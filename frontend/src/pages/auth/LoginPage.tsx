@@ -37,6 +37,38 @@ export const LoginPage: React.FC = () => {
         }
       }
     } catch (err: any) {
+      if (!err.response) {
+        // Backend offline fallback for instant static Vercel preview
+        const cleanId = identifier.trim().toLowerCase();
+        let demoRole: 'ADMIN' | 'HR' | 'EMPLOYEE' | null = null;
+        if (cleanId.includes('admin')) demoRole = 'ADMIN';
+        else if (cleanId.includes('hr')) demoRole = 'HR';
+        else if (cleanId.includes('rahul') || cleanId.includes('emp')) demoRole = 'EMPLOYEE';
+
+        if (demoRole) {
+          const demoUser = {
+            id: `usr-${demoRole.toLowerCase()}-001`,
+            name: demoRole === 'ADMIN' ? 'System Administrator' : demoRole === 'HR' ? 'Ananya Roy' : 'Rahul Sharma',
+            email: cleanId || `${demoRole.toLowerCase()}@nexuspayroll.com`,
+            role: demoRole,
+            isActive: true,
+            employee: {
+              id: `emp-${demoRole.toLowerCase()}-001`,
+              employeeId: demoRole === 'ADMIN' ? 'EMP-001' : demoRole === 'HR' ? 'EMP-002' : 'EMP-101',
+              firstName: demoRole === 'ADMIN' ? 'System' : demoRole === 'HR' ? 'Ananya' : 'Rahul',
+              lastName: demoRole === 'ADMIN' ? 'Administrator' : demoRole === 'HR' ? 'Roy' : 'Sharma',
+              department: { name: demoRole === 'ADMIN' ? 'Operations' : demoRole === 'HR' ? 'Human Resources' : 'Engineering' },
+              designation: { name: demoRole === 'ADMIN' ? 'Administrator' : demoRole === 'HR' ? 'HR Manager' : 'Senior Software Engineer' },
+            },
+          };
+          login('nexus_preview_demo_token', demoUser);
+          if (demoRole === 'ADMIN') navigate('/admin/dashboard', { replace: true });
+          else if (demoRole === 'HR') navigate('/hr/dashboard', { replace: true });
+          else navigate('/employee/dashboard', { replace: true });
+          return;
+        }
+      }
+
       const errorMsg =
         err.response?.data?.message ||
         (err.response?.data?.errors?.length
