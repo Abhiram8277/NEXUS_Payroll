@@ -13,6 +13,8 @@
     "dev:backend": "npm --workspace=backend run dev",
     "dev:frontend": "npm --workspace=frontend run dev",
     "build": "npm --workspace=backend run build && npm --workspace=frontend run build",
+    "build:backend": "npm run prisma:generate && npm --workspace=backend run build",
+    "start:backend": "node backend/dist/server.js",
     "test": "npm --workspace=backend test",
     "prisma:generate": "npx prisma generate --schema=./prisma/schema.prisma",
     "prisma:push": "npx prisma db push --schema=./prisma/schema.prisma",

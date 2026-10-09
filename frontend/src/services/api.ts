@@ -1,7 +1,13 @@
 import axios from 'axios';
 
+// Dynamically resolve base URL: support custom backend domain on Vercel deployment
+const envApiUrl = import.meta.env.VITE_API_URL;
+const resolvedBaseUrl = envApiUrl
+  ? (envApiUrl.endsWith('/api/v1') ? envApiUrl : `${envApiUrl.replace(/\/+$/, '')}/api/v1`)
+  : '/api/v1';
+
 export const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: resolvedBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },

@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: nexus-payroll-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run build:backend
+    startCommand: npx prisma db push --schema=./prisma/schema.prisma && npm run start:backend
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nexus-payroll-db
+          property: connectionString
+
+databases:
+  - name: nexus-payroll-db
+    plan: free
+    region: oregon
+    databaseName: nexus_payroll
+    user: nexus_admin
