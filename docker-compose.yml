@@ -1,0 +1,43 @@
+services:
+  nexus-db:
+    image: postgres:16-alpine
+    container_name: nexus-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: nexus_admin
+      POSTGRES_PASSWORD: nexus_secure_password_2026
+      POSTGRES_DB: nexus_payroll
+    ports:
+      - "5432:5432"
+    volumes:
+      - nexus_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus_admin -d nexus_payroll"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nexus-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexus-platform
+    restart: always
+    depends_on:
+      nexus-db:
+        condition: service_healthy
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://nexus_admin:nexus_secure_password_2026@nexus-db:5432/nexus_payroll?schema=public"
+      JWT_SECRET: "nexus_super_secret_jwt_key_payroll_2026_enterprise"
+      JWT_EXPIRES_IN: "7d"
+      UPLOAD_DIR: "./uploads"
+    ports:
+      - "5000:5000"
+    volumes:
+      - nexus_uploads:/app/uploads
+
+volumes:
+  nexus_pgdata:
+  nexus_uploads:
