@@ -133,7 +133,12 @@ export const EmployeeDetailPage: React.FC = () => {
         fetchEmployeeDetails();
       }
     } catch (e: any) {
-      showToast(e.response?.data?.message || 'Failed to update employee', 'error');
+      const errorMsg =
+        e.response?.data?.message ||
+        (e.response?.data?.errors?.length
+          ? e.response.data.errors.map((err: any) => `${err.field}: ${err.message}`).join(', ')
+          : 'Failed to update employee');
+      showToast(errorMsg, 'error');
     } finally {
       setSavingEdit(false);
     }

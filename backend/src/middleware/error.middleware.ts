@@ -13,7 +13,8 @@ export function errorHandler(
       field: e.path.join('.'),
       message: e.message,
     }));
-    return sendError(res, 'Validation failed', errorDetails, 422);
+    const detailedMessage = err.errors.map((e) => `${e.path.length ? `${e.path.join('.')}: ` : ''}${e.message}`).join(', ') || 'Validation failed';
+    return sendError(res, detailedMessage, errorDetails, 422);
   }
 
   // Handle Prisma unique constraint error

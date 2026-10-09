@@ -37,9 +37,12 @@ export const LoginPage: React.FC = () => {
         }
       }
     } catch (err: any) {
-      setErrorMessage(
-        err.response?.data?.message || 'Invalid credentials. Please verify your email/ID and password.'
-      );
+      const errorMsg =
+        err.response?.data?.message ||
+        (err.response?.data?.errors?.length
+          ? err.response.data.errors.map((e: any) => `${e.field || 'Error'}: ${e.message}`).join('. ')
+          : 'Invalid credentials. Please verify your email/ID and password.');
+      setErrorMessage(errorMsg);
     } finally {
       setIsLoading(false);
     }

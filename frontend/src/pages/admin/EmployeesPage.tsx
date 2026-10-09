@@ -118,6 +118,9 @@ export const EmployeesPage: React.FC = () => {
     try {
       const payload = {
         ...formData,
+        departmentId: formData.departmentId || undefined,
+        designationId: formData.designationId || undefined,
+        locationId: formData.locationId || undefined,
         monthlyGross: parseFloat(formData.monthlyGross) || 0,
       };
 
@@ -157,7 +160,12 @@ export const EmployeesPage: React.FC = () => {
         fetchEmployees();
       }
     } catch (err: any) {
-      showToast(err.response?.data?.message || 'Error creating employee', 'error');
+      const errorMsg =
+        err.response?.data?.message ||
+        (err.response?.data?.errors?.length
+          ? err.response.data.errors.map((e: any) => `${e.field}: ${e.message}`).join(', ')
+          : 'Error creating employee');
+      showToast(errorMsg, 'error');
     } finally {
       setSaving(false);
     }
