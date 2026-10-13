@@ -83,6 +83,19 @@ export const MyLeavesPage: React.FC = () => {
     }
   };
 
+  const handleCancelLeave = async (id: string) => {
+    if (!window.confirm('Cancel this pending leave application?')) return;
+    try {
+      const res = await api.put(`/leaves/${id}/cancel`);
+      if (res.data.success) {
+        showToast('Leave request cancelled and balance restored', 'success');
+        fetchLeaveData();
+      }
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Failed to cancel leave request', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -132,7 +145,8 @@ export const MyLeavesPage: React.FC = () => {
                 <th className="px-4 py-3 text-center">Days</th>
                 <th className="px-6 py-3">Reason</th>
                 <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3 text-right">Applied On</th>
+                <th className="px-6 py-3">Applied On</th>
+                <th className="px-6 py-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -172,6 +186,8 @@ export const MyLeavesPage: React.FC = () => {
                             ? 'success'
                             : req.status === 'REJECTED'
                             ? 'danger'
+                            : req.status === 'CANCELLED'
+                            ? 'neutral'
                             : 'warning'
                         }
                       >
@@ -183,18 +199,32 @@ export const MyLeavesPage: React.FC = () => {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-3.5 text-right text-xs text-slate-400">
+                    <td className="px-6 py-3.5 text-xs text-slate-400">
                       {new Date(req.createdAt).toLocaleDateString('en-IN', {
                         day: 'numeric',
                         month: 'short',
                         year: 'numeric',
                       })}
                     </td>
+                    <td className="px-6 py-3.5 text-right">
+                      {req.status === 'APPLIED' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-rose-600 border-rose-200 hover:bg-rose-50"
+                          onClick={() => handleCancelLeave(req.id)}
+                        >
+                          Cancel
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                     <CalendarRange className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                     <p className="font-semibold text-slate-700">No leave requests found.</p>
                     <p className="text-xs text-slate-400 mt-1">

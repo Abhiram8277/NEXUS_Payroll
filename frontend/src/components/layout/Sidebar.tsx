@@ -41,9 +41,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const hrNav = [
     { name: 'Dashboard', path: '/hr/dashboard', icon: LayoutDashboard },
     { name: 'Employees', path: '/hr/employees', icon: Users },
+    { name: 'Salary Structures', path: '/hr/salary', icon: BadgePercent },
     { name: 'Attendance', path: '/hr/attendance', icon: CalendarCheck2 },
     { name: 'Leaves', path: '/hr/leaves', icon: CalendarRange },
     { name: 'Payroll Preparation', path: '/hr/payroll', icon: Receipt },
+    { name: 'Reports & Exports', path: '/hr/reports', icon: BarChart3 },
   ];
 
   const employeeNav = [

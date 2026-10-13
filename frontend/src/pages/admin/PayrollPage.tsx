@@ -6,23 +6,24 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
+import { Input } from '../../components/common/Input';
 import { ConfirmationModal } from '../../components/common/ConfirmationModal';
 import { Spinner } from '../../components/common/Spinner';
 import { useToast } from '../../context/ToastContext';
 import {
   Receipt,
-  Calendar,
   Lock,
   CheckCircle2,
   AlertCircle,
-  FileText,
   Download,
   Eye,
-  IndianRupee,
   ShieldCheck,
-  ArrowRight,
   TrendingUp,
-  FileCheck,
+  Send,
+  XCircle,
+  Trash2,
+  Mail,
+  RefreshCw,
 } from 'lucide-react';
 import { PayrollRun } from '../../types';
 
@@ -40,8 +41,14 @@ export const PayrollPage: React.FC = () => {
 
   // Modals
   const [isLockModalOpen, setIsLockModalOpen] = useState(false);
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
   const [selectedEmployeeItem, setSelectedEmployeeItem] = useState<any | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  // Distribution Results Modal
+  const [distributionResult, setDistributionResult] = useState<any | null>(null);
+  const [isDistModalOpen, setIsDistModalOpen] = useState(false);
 
   const months = [
     { value: 1, label: 'January' },
@@ -91,7 +98,7 @@ export const PayrollPage: React.FC = () => {
       });
       if (res.data.success) {
         setPreviewData(res.data.data);
-        showToast('Payroll preview calculated successfully', 'info');
+        showToast('Payroll preview calculated from live database records', 'info');
       }
     } catch (e: any) {
       showToast(e.response?.data?.message || 'Failed to preview payroll', 'error');
@@ -119,6 +126,22 @@ export const PayrollPage: React.FC = () => {
     }
   };
 
+  const handleSubmitForReview = async () => {
+    if (!payrollRun) return;
+    try {
+      setActionLoading(true);
+      const res = await api.put(`/payroll/runs/${payrollRun.id}/submit`);
+      if (res.data.success) {
+        showToast('Payroll submitted to Admin for approval', 'success');
+        fetchPayrollData();
+      }
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Failed to submit payroll for approval', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleApprovePayroll = async () => {
     if (!payrollRun) return;
     try {
@@ -130,6 +153,48 @@ export const PayrollPage: React.FC = () => {
       }
     } catch (e: any) {
       showToast(e.response?.data?.message || 'Failed to approve payroll', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectPayroll = async () => {
+    if (!payrollRun) return;
+    if (!rejectionReason.trim()) {
+      showToast('Please enter a reason for rejecting this payroll run', 'error');
+      return;
+    }
+    try {
+      setActionLoading(true);
+      const res = await api.put(`/payroll/runs/${payrollRun.id}/reject`, {
+        reason: rejectionReason,
+      });
+      if (res.data.success) {
+        showToast('Payroll run rejected and returned to HR for correction', 'info');
+        setIsRejectModalOpen(false);
+        setRejectionReason('');
+        fetchPayrollData();
+      }
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Failed to reject payroll', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteDraftRun = async () => {
+    if (!payrollRun) return;
+    if (!window.confirm('Are you sure you want to delete this Draft/Rejected payroll run?')) return;
+    try {
+      setActionLoading(true);
+      const res = await api.delete(`/payroll/runs/${payrollRun.id}`);
+      if (res.data.success) {
+        showToast(res.data.message || 'Payroll run deleted', 'success');
+        setPayrollRun(null);
+        fetchPayrollData();
+      }
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Failed to delete payroll run', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -152,9 +217,32 @@ export const PayrollPage: React.FC = () => {
     }
   };
 
-  const handleDownloadPayslip = async (payslipId: string, employeeName: string) => {
+  const handleDistributePayslips = async (retryFailedOnly = false) => {
+    if (!payrollRun) return;
     try {
-      const res = await api.get(`/payslips/${payslipId}/pdf`, {
+      setActionLoading(true);
+      const res = await api.post(`/payroll/runs/${payrollRun.id}/distribute-payslips`, {
+        retryFailedOnly,
+      });
+      if (res.data.success) {
+        setDistributionResult(res.data.data);
+        setIsDistModalOpen(true);
+        showToast(
+          `Payslip distribution complete: ${res.data.data.sentCount} sent, ${res.data.data.failedCount} failed`,
+          res.data.data.failedCount > 0 ? 'info' : 'success'
+        );
+        fetchPayrollData();
+      }
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Failed to distribute payslips', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDownloadPayslip = async (payslipOrItemId: string, employeeName: string) => {
+    try {
+      const res = await api.get(`/payslips/${payslipOrItemId}/pdf`, {
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
@@ -165,7 +253,7 @@ export const PayrollPage: React.FC = () => {
       link.click();
       link.parentNode?.removeChild(link);
       showToast('Payslip PDF downloaded', 'success');
-    } catch (e) {
+    } catch (e: any) {
       showToast('Failed to download payslip PDF', 'error');
     }
   };
@@ -176,7 +264,7 @@ export const PayrollPage: React.FC = () => {
     <div className="space-y-6">
       <PageHeader
         title="Payroll Studio"
-        description="Comprehensive Indian payroll processing: LOP deduction, statutory compliance (PF, ESI, PT, TDS), approvals, locking, and payslip distribution."
+        description="Comprehensive Indian payroll processing: LOP deduction, statutory compliance (PF, ESI, PT, TDS), HR→Admin approvals, locking, and payslip email distribution."
         action={
           <div className="flex items-center gap-3">
             <select
@@ -211,9 +299,42 @@ export const PayrollPage: React.FC = () => {
         </div>
       ) : (
         <>
+          {/* Rejection Banner */}
+          {payrollRun?.status === 'REJECTED' && (
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h4 className="text-sm font-bold text-rose-800">
+                  Payroll Run Rejected by Administrator
+                </h4>
+                <p className="text-xs text-rose-700 mt-0.5">
+                  Reason: <span className="font-semibold">{payrollRun.rejectionReason || 'Adjustment required'}</span>
+                </p>
+                <p className="text-[11px] text-rose-600 mt-1">
+                  Please adjust employee salary or attendance records, click "Recalculate Draft", and re-submit for approval.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Unassigned Employees Warning in Preview */}
+          {previewData?.warnings?.length > 0 && (
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-bold text-amber-800">Payroll Pre-flight Warnings</h4>
+                <ul className="list-disc list-inside text-xs text-amber-700 mt-1 space-y-0.5">
+                  {previewData.warnings.map((w: string, i: number) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
           {/* Lifecycle Stepper */}
           <Card className="p-6">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
               <div>
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                   Payroll Period Status
@@ -231,6 +352,8 @@ export const PayrollPage: React.FC = () => {
                           ? 'cyan'
                           : payrollRun.status === 'REVIEW'
                           ? 'warning'
+                          : payrollRun.status === 'REJECTED'
+                          ? 'danger'
                           : 'neutral'
                       }
                     >
@@ -245,12 +368,12 @@ export const PayrollPage: React.FC = () => {
               </div>
 
               {/* Progress Steps */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {[
-                  { step: 'DRAFT', label: '1. Prepared' },
-                  { step: 'REVIEW', label: '2. In Review' },
+                  { step: 'DRAFT', label: '1. Draft' },
+                  { step: 'REVIEW', label: '2. Pending Approval' },
                   { step: 'APPROVED', label: '3. Approved' },
-                  { step: 'LOCKED', label: '4. Locked' },
+                  { step: 'LOCKED', label: '4. Locked & Published' },
                 ].map((s, idx) => {
                   const isCurrent = payrollRun?.status === s.step;
                   const isPassed =
@@ -285,7 +408,7 @@ export const PayrollPage: React.FC = () => {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 {!payrollRun && !previewData && (
                   <Button
                     variant="primary"
@@ -302,29 +425,58 @@ export const PayrollPage: React.FC = () => {
                     onClick={handleRunPayroll}
                     loading={actionLoading}
                   >
-                    <CheckCircle2 className="w-4 h-4 mr-1.5" /> Commit to Draft
+                    <CheckCircle2 className="w-4 h-4 mr-1.5" /> Save as Draft Run
                   </Button>
                 )}
 
-                {payrollRun?.status === 'DRAFT' && (
-                  <Button
-                    variant="primary"
-                    onClick={handleRunPayroll}
-                    loading={actionLoading}
-                  >
-                    Recalculate Draft
-                  </Button>
+                {payrollRun && (payrollRun.status === 'DRAFT' || payrollRun.status === 'REJECTED') && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={handleRunPayroll}
+                      loading={actionLoading}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-1.5" /> Recalculate Draft
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={handleSubmitForReview}
+                      loading={actionLoading}
+                    >
+                      <Send className="w-4 h-4 mr-1.5" /> Submit for Approval
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={handleDeleteDraftRun}
+                      disabled={actionLoading}
+                      title="Delete Draft Payroll Run"
+                    >
+                      <Trash2 className="w-4 h-4 text-rose-600" />
+                    </Button>
+                  </>
                 )}
 
-                {user?.role === 'ADMIN' && payrollRun && (payrollRun.status === 'DRAFT' || payrollRun.status === 'REVIEW') && (
-                  <Button
-                    variant="primary"
-                    onClick={handleApprovePayroll}
-                    loading={actionLoading}
-                  >
-                    <ShieldCheck className="w-4 h-4 mr-1.5" /> Approve Payroll
-                  </Button>
-                )}
+                {user?.role === 'ADMIN' &&
+                  payrollRun &&
+                  (payrollRun.status === 'DRAFT' || payrollRun.status === 'REVIEW') && (
+                    <>
+                      <Button
+                        variant="primary"
+                        onClick={handleApprovePayroll}
+                        loading={actionLoading}
+                      >
+                        <ShieldCheck className="w-4 h-4 mr-1.5" /> Approve Payroll
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="text-rose-600 border-rose-300 hover:bg-rose-50"
+                        onClick={() => setIsRejectModalOpen(true)}
+                        disabled={actionLoading}
+                      >
+                        <XCircle className="w-4 h-4 mr-1.5" /> Reject
+                      </Button>
+                    </>
+                  )}
 
                 {user?.role === 'ADMIN' && payrollRun?.status === 'APPROVED' && (
                   <Button
@@ -337,10 +489,20 @@ export const PayrollPage: React.FC = () => {
                 )}
 
                 {payrollRun?.status === 'LOCKED' && (
-                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200">
-                    <CheckCircle2 className="w-4 h-4" />
-                    All Payslips Published
-                  </div>
+                  <>
+                    <Button
+                      variant="primary"
+                      onClick={() => handleDistributePayslips(false)}
+                      loading={actionLoading}
+                    >
+                      <Mail className="w-4 h-4 mr-1.5" />{' '}
+                      {payrollRun.payslipsSent ? 'Resend Payslips via Email' : 'Distribute Payslips via Email'}
+                    </Button>
+                    <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Locked & Published
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -410,6 +572,9 @@ export const PayrollPage: React.FC = () => {
                       <th className="px-6 py-3 text-right">Gross Pay</th>
                       <th className="px-6 py-3 text-right text-rose-600">Deductions</th>
                       <th className="px-6 py-3 text-right font-bold text-slate-900">Net Pay</th>
+                      {payrollRun?.status === 'LOCKED' && (
+                        <th className="px-4 py-3 text-center">Email Status</th>
+                      )}
                       <th className="px-6 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -417,6 +582,8 @@ export const PayrollPage: React.FC = () => {
                     {(payrollRun?.payrollEmployees || currentDisplay.items || []).map(
                       (item: any) => {
                         const emp = item.employee || item;
+                        const payslipId = item.payslip?.id || item.id;
+                        const emailStatus = item.payslip?.emailStatus;
                         return (
                           <tr key={item.id || emp.id} className="hover:bg-slate-50/60">
                             <td className="px-6 py-3.5">
@@ -445,6 +612,21 @@ export const PayrollPage: React.FC = () => {
                             <td className="px-6 py-3.5 text-right font-bold text-slate-900">
                               ₹{Number(item.netSalary).toLocaleString('en-IN')}
                             </td>
+                            {payrollRun?.status === 'LOCKED' && (
+                              <td className="px-4 py-3.5 text-center">
+                                <Badge
+                                  variant={
+                                    emailStatus === 'SENT'
+                                      ? 'success'
+                                      : emailStatus === 'FAILED'
+                                      ? 'danger'
+                                      : 'neutral'
+                                  }
+                                >
+                                  {emailStatus || 'PENDING'}
+                                </Badge>
+                              </td>
+                            )}
                             <td className="px-6 py-3.5 text-right">
                               <div className="flex items-center justify-end gap-1.5">
                                 <Button
@@ -465,7 +647,7 @@ export const PayrollPage: React.FC = () => {
                                     variant="ghost"
                                     onClick={() =>
                                       handleDownloadPayslip(
-                                        item.id,
+                                        payslipId,
                                         `${emp.firstName}_${emp.lastName}`
                                       )
                                     }
@@ -581,6 +763,111 @@ export const PayrollPage: React.FC = () => {
                 <div className="flex justify-end pt-4 border-t border-slate-200">
                   <Button variant="outline" onClick={() => setIsDetailModalOpen(false)}>
                     Close
+                  </Button>
+                </div>
+              </div>
+            </Modal>
+          )}
+
+          {/* Reject Payroll Modal */}
+          <Modal
+            isOpen={isRejectModalOpen}
+            onClose={() => setIsRejectModalOpen(false)}
+            title="Reject Payroll Run"
+          >
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                Provide a clear reason for rejecting this payroll run. HR will be notified and can recalculate the draft after making corrections.
+              </p>
+              <Input
+                label="Rejection Reason *"
+                placeholder="e.g. LOP days for Engineering team need verification"
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                required
+              />
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                <Button variant="outline" onClick={() => setIsRejectModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="danger" onClick={handleRejectPayroll} loading={actionLoading}>
+                  Reject Payroll Run
+                </Button>
+              </div>
+            </div>
+          </Modal>
+
+          {/* Payslip Distribution Results Modal */}
+          {distributionResult && (
+            <Modal
+              isOpen={isDistModalOpen}
+              onClose={() => setIsDistModalOpen(false)}
+              title="Payslip Email Distribution Report"
+              size="lg"
+            >
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-xs text-slate-500 block">Total Processed</span>
+                    <span className="text-xl font-bold text-slate-900">
+                      {distributionResult.totalTargeted}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                    <span className="text-xs text-emerald-700 block">Delivered</span>
+                    <span className="text-xl font-bold text-emerald-700">
+                      {distributionResult.sentCount}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200">
+                    <span className="text-xs text-rose-700 block">Failed</span>
+                    <span className="text-xl font-bold text-rose-700">
+                      {distributionResult.failedCount}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500 uppercase font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-2">Employee</th>
+                        <th className="px-3 py-2">Email</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Note</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(distributionResult.results || []).map((r: any, idx: number) => (
+                        <tr key={idx}>
+                          <td className="px-3 py-2 font-semibold text-slate-800">{r.name}</td>
+                          <td className="px-3 py-2 font-mono text-slate-600">{r.email}</td>
+                          <td className="px-3 py-2">
+                            <Badge variant={r.status === 'SENT' ? 'success' : 'danger'}>
+                              {r.status}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2 text-slate-500">{r.error || 'Delivered'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-between items-center pt-4 border-t border-slate-200">
+                  {distributionResult.failedCount > 0 ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => handleDistributePayslips(true)}
+                      loading={actionLoading}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-1.5" /> Retry Failed Deliveries Only
+                    </Button>
+                  ) : (
+                    <div />
+                  )}
+                  <Button variant="primary" onClick={() => setIsDistModalOpen(false)}>
+                    Done
                   </Button>
                 </div>
               </div>

@@ -3,21 +3,18 @@ import { api } from '../../services/api';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-import { Input } from '../../components/common/Input';
-import { Select } from '../../components/common/Select';
 import { Badge } from '../../components/common/Badge';
 import { Spinner } from '../../components/common/Spinner';
 import { useToast } from '../../context/ToastContext';
 import {
-  CalendarCheck2,
   Upload,
   Calendar,
-  Search,
   CheckCircle,
   FileSpreadsheet,
   AlertCircle,
-  Clock,
   Download,
+  Trash2,
+  Eye,
 } from 'lucide-react';
 import { Employee, MonthlyAttendanceSummary } from '../../types';
 
@@ -29,7 +26,15 @@ export const AttendancePage: React.FC = () => {
   // Daily Marking State
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [dailyRecords, setDailyRecords] = useState<
-    Record<string, { status: 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LOP'; remarks: string }>
+    Record<
+      string,
+      {
+        id?: string;
+        status: 'PRESENT' | 'ABSENT' | 'HALF_DAY' | 'LOP';
+        remarks: string;
+        saved?: boolean;
+      }
+    >
   >({});
   const [savingDaily, setSavingDaily] = useState(false);
 
@@ -51,6 +56,12 @@ export const AttendancePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (employees.length > 0 && activeTab === 'daily') {
+      fetchDailyAttendance(selectedDate, employees);
+    }
+  }, [selectedDate, employees, activeTab]);
+
+  useEffect(() => {
     if (activeTab === 'monthly') {
       fetchMonthlySummary();
     }
@@ -59,22 +70,47 @@ export const AttendancePage: React.FC = () => {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/employees?limit=100');
+      const res = await api.get('/employees?limit=200&status=ACTIVE');
       if (res.data.success) {
         const emps: Employee[] = res.data.data.items || [];
         setEmployees(emps);
-        // Default all to PRESENT
-        const initialMap: any = {};
-        emps.forEach((emp) => {
-          initialMap[emp.id] = { status: 'PRESENT', remarks: '' };
-        });
-        setDailyRecords(initialMap);
       }
     } catch (e) {
       console.error(e);
       showToast('Failed to load employee list', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDailyAttendance = async (dateStr: string, empList: Employee[]) => {
+    try {
+      const res = await api.get('/attendance/daily', { params: { date: dateStr } });
+      const savedList: any[] = res.data?.data || [];
+      const savedByEmpId = new Map<string, any>();
+      savedList.forEach((rec) => savedByEmpId.set(rec.employeeId, rec));
+
+      const map: Record<string, any> = {};
+      empList.forEach((emp) => {
+        const existing = savedByEmpId.get(emp.id);
+        if (existing) {
+          map[emp.id] = {
+            id: existing.id,
+            status: existing.status,
+            remarks: existing.remarks || '',
+            saved: true,
+          };
+        } else {
+          map[emp.id] = {
+            status: 'PRESENT',
+            remarks: '',
+            saved: false,
+          };
+        }
+      });
+      setDailyRecords(map);
+    } catch {
+      // Fallback default map
     }
   };
 
@@ -119,6 +155,7 @@ export const AttendancePage: React.FC = () => {
     const updated: any = {};
     employees.forEach((emp) => {
       updated[emp.id] = {
+        ...dailyRecords[emp.id],
         status,
         remarks: dailyRecords[emp.id]?.remarks || '',
       };
@@ -140,6 +177,7 @@ export const AttendancePage: React.FC = () => {
       const res = await api.post('/attendance/mark', { records });
       if (res.data.success) {
         showToast(`Attendance recorded for ${records.length} employees on ${selectedDate}`, 'success');
+        fetchDailyAttendance(selectedDate, employees);
       }
     } catch (e: any) {
       showToast(e.response?.data?.message || 'Failed to save attendance', 'error');
@@ -148,28 +186,73 @@ export const AttendancePage: React.FC = () => {
     }
   };
 
-  const handleImportSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleDeleteDailyRecord = async (emp: Employee) => {
+    const rec = dailyRecords[emp.id];
+    if (!rec?.id) return;
+    if (
+      !window.confirm(
+        `Delete saved attendance record for ${emp.firstName} ${emp.lastName} on ${selectedDate}?`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await api.delete(`/attendance/${rec.id}`);
+      if (res.data.success) {
+        showToast('Attendance record deleted', 'success');
+        fetchDailyAttendance(selectedDate, employees);
+      }
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Failed to delete attendance record', 'error');
+    }
+  };
+
+  const handleDownloadSampleTemplate = async () => {
+    try {
+      const res = await api.get('/attendance/template', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(
+        new Blob([res.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        })
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'NEXUS_Attendance_Import_Template.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      showToast('Sample attendance Excel template downloaded', 'success');
+    } catch {
+      showToast('Failed to download sample template', 'error');
+    }
+  };
+
+  const runExcelImport = async (previewOnly: boolean) => {
     if (!importFile) {
-      showToast('Please select an Excel or CSV file', 'error');
+      showToast('Please select an Excel or CSV file first', 'error');
       return;
     }
     try {
       setImporting(true);
       const formData = new FormData();
       formData.append('file', importFile);
-      formData.append('month', String(selectedMonth));
-      formData.append('year', String(selectedYear));
 
-      const res = await api.post('/attendance/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await api.post(
+        `/attendance/import${previewOnly ? '?preview=true' : ''}`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
       if (res.data.success) {
         setImportResult(res.data.data);
-        showToast('Attendance imported successfully', 'success');
+        showToast(
+          previewOnly
+            ? 'Validation preview completed. Review valid and invalid rows below.'
+            : `Attendance import completed: ${res.data.data.successfulRows} record(s) saved.`,
+          'success'
+        );
       }
     } catch (e: any) {
-      showToast(e.response?.data?.message || 'Failed to import attendance', 'error');
+      showToast(e.response?.data?.message || 'Failed to process attendance file', 'error');
     } finally {
       setImporting(false);
     }
@@ -202,11 +285,15 @@ export const AttendancePage: React.FC = () => {
     <div className="space-y-6">
       <PageHeader
         title="Attendance & Time Management"
-        description="Record daily attendance, inspect monthly payroll inputs, and perform bulk Excel imports."
+        description="Record daily attendance, inspect monthly payroll inputs, and perform validated bulk Excel imports."
         action={
           activeTab === 'daily' ? (
             <Button variant="primary" onClick={handleSaveDaily} loading={savingDaily}>
               <CheckCircle className="w-4 h-4 mr-1.5" /> Save Daily Log
+            </Button>
+          ) : activeTab === 'import' ? (
+            <Button variant="outline" onClick={handleDownloadSampleTemplate}>
+              <Download className="w-4 h-4 mr-1.5" /> Download Sample Excel
             </Button>
           ) : null
         }
@@ -268,12 +355,14 @@ export const AttendancePage: React.FC = () => {
                     <th className="px-6 py-3">Department</th>
                     <th className="px-6 py-3">Status</th>
                     <th className="px-6 py-3">Remarks / Reason</th>
+                    <th className="px-6 py-3 text-right">Record State</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {employees.map((emp) => {
-                    const currentStatus = dailyRecords[emp.id]?.status || 'PRESENT';
-                    const currentRemarks = dailyRecords[emp.id]?.remarks || '';
+                    const rec = dailyRecords[emp.id];
+                    const currentStatus = rec?.status || 'PRESENT';
+                    const currentRemarks = rec?.remarks || '';
 
                     return (
                       <tr key={emp.id} className="hover:bg-slate-50/60">
@@ -318,6 +407,23 @@ export const AttendancePage: React.FC = () => {
                             onChange={(e) => handleRemarksChange(emp.id, e.target.value)}
                             className="w-full max-w-xs px-3 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
                           />
+                        </td>
+                        <td className="px-6 py-3.5 text-right">
+                          {rec?.saved ? (
+                            <div className="inline-flex items-center gap-2">
+                              <Badge variant="success">Saved</Badge>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteDailyRecord(emp)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 cursor-pointer"
+                                title="Delete Attendance Entry"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <Badge variant="neutral">Unsaved Default</Badge>
+                          )}
                         </td>
                       </tr>
                     );
@@ -431,74 +537,49 @@ export const AttendancePage: React.FC = () => {
 
       {/* TAB 3: Bulk Import */}
       {activeTab === 'import' && (
-        <div className="max-w-2xl mx-auto space-y-6">
+        <div className="max-w-4xl mx-auto space-y-6">
           <Card className="p-8">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-3 rounded-xl bg-blue-50 text-blue-600">
-                <FileSpreadsheet className="w-6 h-6" />
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-xl bg-blue-50 text-blue-600">
+                  <FileSpreadsheet className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Import Attendance via Excel / CSV</h3>
+                  <p className="text-sm text-slate-500">
+                    Validate and bulk upload biometric or spreadsheet attendance logs into NEXUS.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Import Attendance via Excel / CSV</h3>
-                <p className="text-sm text-slate-500">
-                  Bulk upload biometric or spreadsheet punch logs directly to NEXUS.
-                </p>
-              </div>
+              <Button variant="outline" size="sm" onClick={handleDownloadSampleTemplate}>
+                <Download className="w-4 h-4 mr-1.5" /> Sample Template (.xlsx)
+              </Button>
             </div>
 
-            <form onSubmit={handleImportSubmit} className="space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Payroll Month</label>
-                  <select
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {months.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Payroll Year</label>
-                  <select
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {[2024, 2025, 2026, 2027].map((y) => (
-                      <option key={y} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
+            <div className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Excel Spreadsheet (.xlsx, .xls)
+                  Excel Spreadsheet (.xlsx, .xls, .csv)
                 </label>
                 <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-xl hover:border-blue-400 transition-colors">
                   <div className="space-y-2 text-center">
                     <Upload className="mx-auto h-8 w-8 text-slate-400" />
-                    <div className="flex text-sm text-slate-600">
-                      <label className="relative cursor-pointer rounded-md font-medium text-blue-600 hover:text-blue-500">
-                        <span>Upload a file</span>
+                    <div className="flex text-sm text-slate-600 justify-center">
+                      <label className="relative cursor-pointer rounded-md font-semibold text-blue-600 hover:text-blue-500">
+                        <span>Choose an Excel file</span>
                         <input
                           type="file"
                           accept=".xlsx,.xls,.csv"
-                          onChange={(e) => setImportFile(e.target.files ? e.target.files[0] : null)}
+                          onChange={(e) => {
+                            setImportFile(e.target.files ? e.target.files[0] : null);
+                            setImportResult(null);
+                          }}
                           className="sr-only"
-                          required
                         />
                       </label>
-                      <p className="pl-1">or drag and drop</p>
                     </div>
                     <p className="text-xs text-slate-500">
-                      {importFile ? importFile.name : 'XLSX or CSV up to 10MB'}
+                      {importFile ? `Selected: ${importFile.name}` : 'XLSX, XLS, or CSV up to 5MB'}
                     </p>
                   </div>
                 </div>
@@ -506,32 +587,157 @@ export const AttendancePage: React.FC = () => {
 
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1.5">
                 <div className="font-semibold text-slate-800">Required Column Headers:</div>
-                <p>• <strong>Employee ID</strong> (e.g. EMP001, EMP002)</p>
-                <p>• <strong>Date</strong> (Format: YYYY-MM-DD or DD/MM/YYYY)</p>
-                <p>• <strong>Status</strong> (PRESENT, ABSENT, HALF_DAY, LOP)</p>
-                <p>• <strong>Remarks</strong> (Optional note or punch log reason)</p>
+                <p>• <strong>employeeId</strong> (e.g. EMP-101, EMP-102)</p>
+                <p>• <strong>date</strong> (Format: YYYY-MM-DD)</p>
+                <p>• <strong>status</strong> (PRESENT, ABSENT, HALF_DAY, LOP)</p>
+                <p>• <strong>remarks</strong> (Optional note or punch log reason)</p>
               </div>
 
-              <Button
-                variant="primary"
-                type="submit"
-                className="w-full justify-center"
-                loading={importing}
-              >
-                Upload and Process Attendance
-              </Button>
-            </form>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Button
+                  variant="outline"
+                  type="button"
+                  className="w-full justify-center"
+                  onClick={() => runExcelImport(true)}
+                  loading={importing}
+                  disabled={!importFile}
+                >
+                  <Eye className="w-4 h-4 mr-1.5" /> 1. Preview & Validate File
+                </Button>
+                <Button
+                  variant="primary"
+                  type="button"
+                  className="w-full justify-center"
+                  onClick={() => runExcelImport(false)}
+                  loading={importing}
+                  disabled={!importFile}
+                >
+                  <CheckCircle className="w-4 h-4 mr-1.5" /> 2. Confirm & Import Valid Rows
+                </Button>
+              </div>
+            </div>
 
             {importResult && (
-              <div className="mt-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-800">
-                <div className="font-bold flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-emerald-600" />
-                  Import Completed Successfully
+              <div className="mt-6 space-y-4">
+                <div
+                  className={`p-4 rounded-xl border text-sm ${
+                    importResult.previewOnly
+                      ? 'bg-blue-50 border-blue-200 text-blue-900'
+                      : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  }`}
+                >
+                  <div className="font-bold flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5" />
+                    {importResult.previewOnly
+                      ? 'Validation Preview Summary (Not Yet Saved)'
+                      : 'Attendance Import Summary (Saved to Database)'}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3 text-xs">
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block">Total Rows</span>
+                      <span className="text-base font-bold text-slate-900">{importResult.totalRows}</span>
+                    </div>
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block">
+                        {importResult.previewOnly ? 'Valid Rows' : 'Imported Rows'}
+                      </span>
+                      <span className="text-base font-bold text-emerald-600">
+                        {importResult.successfulRows}
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block">Existing Updated</span>
+                      <span className="text-base font-bold text-blue-600">
+                        {importResult.updatedRows || 0}
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block">Duplicates in File</span>
+                      <span className="text-base font-bold text-amber-600">
+                        {importResult.duplicateRows || 0}
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block">Failed / Invalid</span>
+                      <span className="text-base font-bold text-rose-600">
+                        {importResult.failedRows || 0}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <p className="mt-1">
-                  Processed {importResult.totalImported || 0} attendance records for {selectedMonth}/
-                  {selectedYear}.
-                </p>
+
+                {/* Row-Level Errors Table */}
+                {importResult.errors && importResult.errors.length > 0 && (
+                  <div className="border border-rose-200 rounded-xl overflow-hidden">
+                    <div className="bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-800 flex items-center gap-2 border-b border-rose-200">
+                      <AlertCircle className="w-4 h-4 text-rose-600" />
+                      Rejected / Invalid Rows ({importResult.errors.length})
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-500 uppercase border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-2">Excel Row #</th>
+                            <th className="px-4 py-2">Employee ID</th>
+                            <th className="px-4 py-2">Date</th>
+                            <th className="px-4 py-2">Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {importResult.errors.map((err: any, idx: number) => (
+                            <tr key={idx} className="bg-white">
+                              <td className="px-4 py-2 font-mono font-semibold text-slate-800">
+                                Row {err.row}
+                              </td>
+                              <td className="px-4 py-2 font-mono text-slate-600">
+                                {err.employeeId || '—'}
+                              </td>
+                              <td className="px-4 py-2 text-slate-600">{err.date || '—'}</td>
+                              <td className="px-4 py-2 text-rose-600 font-medium">{err.error}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Valid Records Preview Table */}
+                {importResult.validRecords && importResult.validRecords.length > 0 && (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-700 border-b border-slate-200">
+                      Valid Attendance Rows ({importResult.validRecords.length})
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-500 uppercase border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-2">Row</th>
+                            <th className="px-4 py-2">Employee</th>
+                            <th className="px-4 py-2">Date</th>
+                            <th className="px-4 py-2">Status</th>
+                            <th className="px-4 py-2">Remarks</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {importResult.validRecords.map((vr: any, idx: number) => (
+                            <tr key={idx} className="bg-white">
+                              <td className="px-4 py-2 font-mono">{vr.row}</td>
+                              <td className="px-4 py-2 font-medium text-slate-900">
+                                {vr.employeeCode} — {vr.employeeName}
+                              </td>
+                              <td className="px-4 py-2">{vr.date}</td>
+                              <td className="px-4 py-2">
+                                <Badge variant="success">{vr.status}</Badge>
+                              </td>
+                              <td className="px-4 py-2 text-slate-500">{vr.remarks || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </Card>

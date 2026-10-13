@@ -141,6 +141,24 @@ export const MastersPage: React.FC = () => {
     }
   };
 
+  const handleDeleteItem = async (id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete or deactivate "${name}"?`)) return;
+    try {
+      let endpoint = '';
+      if (activeTab === 'departments') endpoint = '/departments';
+      else if (activeTab === 'designations') endpoint = '/designations';
+      else if (activeTab === 'locations') endpoint = '/locations';
+      else if (activeTab === 'leavetypes') endpoint = '/leave-types';
+      else if (activeTab === 'holidays') endpoint = '/holidays';
+
+      const res = await api.delete(`${endpoint}/${id}`);
+      showToast(res.data?.message || 'Deleted successfully', 'success');
+      fetchMasters();
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Delete operation failed', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -217,9 +235,14 @@ export const MastersPage: React.FC = () => {
                       </Badge>
                     </td>
                     <td className="px-6 py-3.5 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(dept)}>
-                        <Edit className="w-4 h-4 text-blue-600" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(dept)}>
+                          <Edit className="w-4 h-4 text-blue-600" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleDeleteItem(dept.id, dept.name)}>
+                          <Trash2 className="w-4 h-4 text-rose-600" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -255,9 +278,14 @@ export const MastersPage: React.FC = () => {
                       </Badge>
                     </td>
                     <td className="px-6 py-3.5 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(desig)}>
-                        <Edit className="w-4 h-4 text-blue-600" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(desig)}>
+                          <Edit className="w-4 h-4 text-blue-600" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleDeleteItem(desig.id, desig.name)}>
+                          <Trash2 className="w-4 h-4 text-rose-600" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -297,9 +325,14 @@ export const MastersPage: React.FC = () => {
                       </Badge>
                     </td>
                     <td className="px-6 py-3.5 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(loc)}>
-                        <Edit className="w-4 h-4 text-blue-600" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(loc)}>
+                          <Edit className="w-4 h-4 text-blue-600" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleDeleteItem(loc.id, loc.name)}>
+                          <Trash2 className="w-4 h-4 text-rose-600" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -343,9 +376,14 @@ export const MastersPage: React.FC = () => {
                       </Badge>
                     </td>
                     <td className="px-6 py-3.5 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(lt)}>
-                        <Edit className="w-4 h-4 text-blue-600" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(lt)}>
+                          <Edit className="w-4 h-4 text-blue-600" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleDeleteItem(lt.id, lt.name)}>
+                          <Trash2 className="w-4 h-4 text-rose-600" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -382,9 +420,14 @@ export const MastersPage: React.FC = () => {
                     </td>
                     <td className="px-6 py-3.5 text-slate-500">{h.description || 'Public holiday'}</td>
                     <td className="px-6 py-3.5 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(h)}>
-                        <Edit className="w-4 h-4 text-blue-600" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(h)}>
+                          <Edit className="w-4 h-4 text-blue-600" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleDeleteItem(h.id, h.name)}>
+                          <Trash2 className="w-4 h-4 text-rose-600" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

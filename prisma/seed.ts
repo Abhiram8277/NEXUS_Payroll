@@ -264,6 +264,43 @@ async function main() {
     },
   });
 
+  // 6b. Default Salary Templates
+  const stdTemplate = await prisma.salaryTemplate.upsert({
+    where: { name: 'Standard Corporate CTC Structure' },
+    update: {},
+    create: {
+      name: 'Standard Corporate CTC Structure',
+      description: '50% Basic, 40% HRA on Basic, Rs 1600 Conveyance, Balancing Special Allowance & Statutory PF/PT',
+    },
+  });
+
+  const stdTemplateComponents = [
+    { componentId: compBasic.id, calculationType: CalculationType.PERCENTAGE, value: 50 },
+    { componentId: compHRA.id, calculationType: CalculationType.PERCENTAGE, value: 40 },
+    { componentId: compConveyance.id, calculationType: CalculationType.FIXED, value: 1600 },
+    { componentId: compSpecial.id, calculationType: CalculationType.FIXED, value: 0 },
+    { componentId: compPF.id, calculationType: CalculationType.PERCENTAGE, value: 12 },
+    { componentId: compPT.id, calculationType: CalculationType.FIXED, value: 200 },
+  ];
+
+  for (const stc of stdTemplateComponents) {
+    await prisma.salaryTemplateComponent.upsert({
+      where: {
+        templateId_componentId: {
+          templateId: stdTemplate.id,
+          componentId: stc.componentId,
+        },
+      },
+      update: { calculationType: stc.calculationType, value: stc.value },
+      create: {
+        templateId: stdTemplate.id,
+        componentId: stc.componentId,
+        calculationType: stc.calculationType,
+        value: stc.value,
+      },
+    });
+  }
+
   // 7. Statutory Configuration
   await prisma.statutoryConfig.createMany({
     data: [

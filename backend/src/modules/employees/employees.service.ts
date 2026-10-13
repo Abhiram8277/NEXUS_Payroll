@@ -1,6 +1,10 @@
 import { prisma } from '../../config/prisma';
 import bcrypt from 'bcryptjs';
+import fs from 'fs';
+import path from 'path';
 import { EmploymentStatus, Role, TaxRegime, DocumentType } from '@prisma/client';
+import { AuthService } from '../auth/auth.service';
+import { config } from '../../config';
 
 export class EmployeesService {
   static async listEmployees(params: {
@@ -13,7 +17,7 @@ export class EmployeesService {
     limit?: number;
   }) {
     const page = Math.max(1, Number(params.page) || 1);
-    const limit = Math.max(1, Math.min(100, Number(params.limit) || 15));
+    const limit = Math.max(1, Math.min(200, Number(params.limit) || 15));
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -43,7 +47,16 @@ export class EmployeesService {
           department: { select: { id: true, name: true, code: true } },
           designation: { select: { id: true, name: true, code: true } },
           location: { select: { id: true, name: true, city: true } },
-          salary: { select: { monthlyGross: true, ctcAnnual: true } },
+          salary: {
+            select: {
+              id: true,
+              templateId: true,
+              monthlyGross: true,
+              ctcAnnual: true,
+              effectiveFrom: true,
+              template: { select: { id: true, name: true } },
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -72,7 +85,11 @@ export class EmployeesService {
         manager: {
           select: { id: true, employeeId: true, firstName: true, lastName: true },
         },
-        salary: true,
+        salary: {
+          include: {
+            template: { select: { id: true, name: true } },
+          },
+        },
         documents: {
           select: {
             id: true,
@@ -90,12 +107,19 @@ export class EmployeesService {
       },
     });
 
-    if (!employee) throw new Error('Employee not found');
+    if (!employee) {
+      const err: any = new Error('Employee not found');
+      err.statusCode = 404;
+      throw err;
+    }
     return employee;
   }
 
   static async createEmployee(data: any) {
-    return prisma.$transaction(async (tx) => {
+    let createdNewUserId: string | null = null;
+    const tempPass = data.password || 'Nexus@12345';
+
+    const employee = await prisma.$transaction(async (tx) => {
       // Check duplicate employeeId or email
       const existingId = await tx.employee.findUnique({ where: { employeeId: data.employeeId } });
       if (existingId) throw new Error(`Employee ID ${data.employeeId} already exists.`);
@@ -111,8 +135,7 @@ export class EmployeesService {
         if (existingUser) {
           userId = existingUser.id;
         } else {
-          const pass = data.password || 'Nexus@12345';
-          const passwordHash = await bcrypt.hash(pass, 10);
+          const passwordHash = await bcrypt.hash(tempPass, 10);
           const newUser = await tx.user.create({
             data: {
               name: `${data.firstName} ${data.lastName}`,
@@ -123,10 +146,11 @@ export class EmployeesService {
             },
           });
           userId = newUser.id;
+          createdNewUserId = newUser.id;
         }
       }
 
-      const employee = await tx.employee.create({
+      const emp = await tx.employee.create({
         data: {
           employeeId: data.employeeId.trim(),
           userId,
@@ -161,7 +185,7 @@ export class EmployeesService {
       for (const lt of leaveTypes) {
         await tx.leaveBalance.create({
           data: {
-            employeeId: employee.id,
+            employeeId: emp.id,
             leaveTypeId: lt.id,
             year: currentYear,
             allocated: lt.annualAllocation,
@@ -172,8 +196,15 @@ export class EmployeesService {
         });
       }
 
-      return employee;
+      return emp;
     });
+
+    // Send Welcome & Account Activation Email
+    if (createdNewUserId) {
+      await AuthService.createAndSendActivationInvite(createdNewUserId, tempPass).catch(() => {});
+    }
+
+    return employee;
   }
 
   static async updateEmployee(id: string, data: any) {
@@ -219,6 +250,59 @@ export class EmployeesService {
     return updated;
   }
 
+  static async deleteEmployee(id: string) {
+    const existing = await prisma.employee.findUnique({
+      where: { id },
+      include: { _count: { select: { payrollEmployees: true, payslips: true } } },
+    });
+
+    if (!existing) {
+      const err: any = new Error('Employee not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // If employee has historical payroll runs/payslips, soft-deactivate to preserve audit history
+    if (existing._count.payrollEmployees > 0 || existing._count.payslips > 0) {
+      const updated = await prisma.employee.update({
+        where: { id },
+        data: {
+          status: EmploymentStatus.EXITED,
+          exitDate: existing.exitDate || new Date(),
+        },
+      });
+      if (existing.userId) {
+        await prisma.user.update({
+          where: { id: existing.userId },
+          data: { isActive: false },
+        });
+      }
+      return {
+        action: 'DEACTIVATED',
+        deactivated: true,
+        deleted: false,
+        employee: updated,
+        message: 'Employee has historical payroll records and has been deactivated (EXITED) to preserve payroll history.',
+      };
+    }
+
+    // Otherwise hard-delete the employee and linked EMPLOYEE user account
+    await prisma.employee.delete({ where: { id } });
+    if (existing.userId) {
+      const user = await prisma.user.findUnique({ where: { id: existing.userId } });
+      if (user && user.role === Role.EMPLOYEE) {
+        await prisma.user.delete({ where: { id: existing.userId } });
+      }
+    }
+
+    return {
+      action: 'DELETED',
+      deleted: true,
+      deactivated: false,
+      message: 'Employee deleted permanently.',
+    };
+  }
+
   static async addDocument(employeeId: string, file: Express.Multer.File, documentType: DocumentType) {
     const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
     if (!employee) throw new Error('Employee not found');
@@ -242,5 +326,26 @@ export class EmployeesService {
     });
     if (!doc) throw new Error('Document not found');
     return doc;
+  }
+
+  static async deleteDocument(docId: string) {
+    const doc = await prisma.employeeDocument.findUnique({ where: { id: docId } });
+    if (!doc) {
+      const err: any = new Error('Document not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const fullPath = path.join(config.uploadDir, doc.filePath);
+    if (fs.existsSync(fullPath)) {
+      try {
+        fs.unlinkSync(fullPath);
+      } catch {
+        // Ignore fs unlink error if file was already removed
+      }
+    }
+
+    await prisma.employeeDocument.delete({ where: { id: docId } });
+    return { message: 'Document deleted successfully.' };
   }
 }

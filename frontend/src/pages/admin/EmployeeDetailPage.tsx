@@ -26,6 +26,7 @@ import {
   Edit,
   BadgePercent,
   CheckCircle,
+  Trash2,
 } from 'lucide-react';
 import { Employee, SalaryTemplate } from '../../types';
 
@@ -218,6 +219,39 @@ export const EmployeeDetailPage: React.FC = () => {
     }
   };
 
+  const handleDeleteDoc = async (docId: string, fileName: string) => {
+    if (!window.confirm(`Delete document "${fileName}"?`)) return;
+    try {
+      const res = await api.delete(`/employees/documents/${docId}`);
+      if (res.data.success) {
+        showToast('Document deleted successfully', 'success');
+        fetchEmployeeDetails();
+      }
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Failed to delete document', 'error');
+    }
+  };
+
+  const handleDeleteEmployee = async () => {
+    if (!employee) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to delete or deactivate ${employee.firstName} ${employee.lastName}?`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await api.delete(`/employees/${employee.id}`);
+      if (res.data.success) {
+        showToast(res.data.message || 'Employee removed/deactivated', 'success');
+        navigate(-1);
+      }
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Failed to delete employee', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -288,6 +322,14 @@ export const EmployeeDetailPage: React.FC = () => {
             </Button>
             <Button variant="primary" onClick={() => setIsSalaryModalOpen(true)}>
               <BadgePercent className="w-4 h-4 mr-2" /> Configure Salary
+            </Button>
+            <Button
+              variant="outline"
+              className="text-rose-600 border-rose-200 hover:bg-rose-50"
+              onClick={handleDeleteEmployee}
+              title="Deactivate or Delete Employee"
+            >
+              <Trash2 className="w-4 h-4" />
             </Button>
           </div>
         </div>
@@ -617,13 +659,24 @@ export const EmployeeDetailPage: React.FC = () => {
                         {new Date(doc.uploadedAt).toLocaleDateString('en-IN')}
                       </td>
                       <td className="px-6 py-3.5 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDownloadDoc(doc.id, doc.fileName)}
-                        >
-                          <Download className="w-4 h-4 text-blue-600" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDownloadDoc(doc.id, doc.fileName)}
+                            title="Download Document"
+                          >
+                            <Download className="w-4 h-4 text-blue-600" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteDoc(doc.id, doc.fileName)}
+                            title="Delete Document"
+                          >
+                            <Trash2 className="w-4 h-4 text-rose-600" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))

@@ -29,12 +29,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch {
         localStorage.removeItem('nexus_user');
       }
-      if (savedToken === 'nexus_preview_demo_token') {
-        setIsLoading(false);
-        return;
-      }
 
-      // Re-verify with backend
+      // Verify token with live backend
       api
         .get('/auth/me')
         .then((res) => {
@@ -44,7 +40,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         })
         .catch(() => {
-          // Token invalid or expired
           logout();
         })
         .finally(() => {

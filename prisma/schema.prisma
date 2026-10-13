@@ -54,6 +54,7 @@ enum PayrollStatus {
   DRAFT
   REVIEW
   APPROVED
+  REJECTED
   LOCKED
 }
 
@@ -65,19 +66,51 @@ enum DocumentType {
 }
 
 model User {
-  id           String    @id @default(uuid())
-  email        String    @unique
+  id           String      @id @default(uuid())
+  email        String      @unique
   name         String
   passwordHash String
-  role         Role      @default(EMPLOYEE)
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  role         Role        @default(EMPLOYEE)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   employee     Employee?
+  tokens       UserToken[]
 
   @@index([email])
   @@index([role])
+}
+
+model UserToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  type      String    // PASSWORD_RESET, ACCOUNT_ACTIVATION
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model EmailLog {
+  id          String    @id @default(uuid())
+  to          String
+  subject     String
+  template    String
+  htmlBody    String
+  status      String    @default("SENT") // SENT, FAILED
+  error       String?
+  metadata    Json?
+  sentAt      DateTime  @default(now())
+
+  @@index([to])
+  @@index([template])
+  @@index([status])
 }
 
 model Company {
@@ -396,10 +429,18 @@ model PayrollRun {
 
   preparedById       String?
   preparedAt         DateTime?
+  submittedById      String?
+  submittedAt        DateTime?
   approvedById       String?
   approvedAt         DateTime?
+  rejectedById       String?
+  rejectedAt         DateTime?
+  rejectionReason    String?
   lockedById         String?
   lockedAt           DateTime?
+  payslipsSent       Boolean           @default(false)
+  payslipsSentAt     DateTime?
+  payslipsSentById   String?
 
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
@@ -461,6 +502,9 @@ model Payslip {
   year              Int
   netSalary         Float
   pdfUrl            String?
+  emailStatus       String          @default("PENDING") // PENDING, SENT, FAILED
+  sentAt            DateTime?
+  emailError        String?
   generatedAt       DateTime        @default(now())
 
   payrollEmployee   PayrollEmployee @relation(fields: [payrollEmployeeId], references: [id], onDelete: Cascade)

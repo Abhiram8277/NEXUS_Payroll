@@ -178,6 +178,7 @@ export class ReportsService {
       const basic = pe.components.find((c) => c.code === 'BASIC')?.amount || 0;
       const hra = pe.components.find((c) => c.code === 'HRA')?.amount || 0;
       const pf = pe.components.find((c) => c.code === 'PF_EE')?.amount || 0;
+      const esi = pe.components.find((c) => c.code === 'ESI_EE')?.amount || 0;
       const pt = pe.components.find((c) => c.code === 'PT')?.amount || 0;
       const tds = pe.components.find((c) => c.code === 'TDS')?.amount || 0;
       const allowances = pe.grossEarnings - basic - hra;
@@ -195,6 +196,7 @@ export class ReportsService {
         allowances,
         gross: pe.grossEarnings,
         pf,
+        esi,
         pt,
         tds,
         totalDeductions: pe.totalDeductions,
@@ -217,19 +219,33 @@ export class ReportsService {
 
     if (!run) return [];
 
-    const map = new Map<string, { deptName: string; count: number; gross: number; employerCost: number; totalCost: number }>();
+    const map = new Map<
+      string,
+      {
+        deptName: string;
+        department: string;
+        count: number;
+        headcount: number;
+        gross: number;
+        employerCost: number;
+        totalCost: number;
+      }
+    >();
 
     for (const pe of run.payrollEmployees) {
       const deptName = pe.employee.department?.name || 'Unassigned';
       const existing = map.get(deptName) || {
         deptName,
+        department: deptName,
         count: 0,
+        headcount: 0,
         gross: 0,
         employerCost: 0,
         totalCost: 0,
       };
 
       existing.count++;
+      existing.headcount++;
       existing.gross += pe.grossEarnings;
       existing.employerCost += pe.employerContributions;
       existing.totalCost += pe.grossEarnings + pe.employerContributions;

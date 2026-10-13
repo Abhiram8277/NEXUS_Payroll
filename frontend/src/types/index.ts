@@ -229,7 +229,7 @@ export interface PayrollRun {
   id: string;
   month: number;
   year: number;
-  status: 'DRAFT' | 'REVIEW' | 'APPROVED' | 'LOCKED';
+  status: 'DRAFT' | 'REVIEW' | 'APPROVED' | 'REJECTED' | 'LOCKED';
   totalEmployees: number;
   totalGross: number;
   totalDeductions: number;
@@ -237,10 +237,17 @@ export interface PayrollRun {
   totalNet: number;
   preparedById?: string;
   preparedAt?: string;
+  submittedById?: string;
+  submittedAt?: string;
   approvedById?: string;
   approvedAt?: string;
+  rejectedById?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
   lockedById?: string;
   lockedAt?: string;
+  payslipsSent?: boolean;
+  payslipsSentAt?: string;
   createdAt: string;
   payrollEmployees?: Array<{
     id: string;
@@ -250,6 +257,7 @@ export interface PayrollRun {
       employeeId: string;
       firstName: string;
       lastName: string;
+      email?: string;
       department?: { name: string };
       designation?: { name: string };
     };
@@ -260,6 +268,13 @@ export interface PayrollRun {
     totalDeductions: number;
     employerContributions: number;
     netSalary: number;
+    payslip?: {
+      id: string;
+      payslipNumber: string;
+      emailStatus?: 'PENDING' | 'SENT' | 'FAILED';
+      sentAt?: string;
+      emailError?: string;
+    };
     components: Array<{
       name: string;
       code: string;
@@ -277,6 +292,9 @@ export interface Payslip {
   month: number;
   year: number;
   netSalary: number;
+  emailStatus?: 'PENDING' | 'SENT' | 'FAILED';
+  sentAt?: string;
+  emailError?: string;
   generatedAt: string;
   employee?: {
     id: string;
@@ -295,3 +313,4 @@ export interface Payslip {
     components?: any[];
   };
 }
+

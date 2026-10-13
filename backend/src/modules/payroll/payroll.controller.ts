@@ -36,7 +36,7 @@ export class PayrollController {
       );
       return sendSuccess(res, `Payroll calculated for ${month}/${year}.`, result);
     } catch (e: any) {
-      if (e.message && e.message.includes('LOCKED')) {
+      if (e.message && (e.message.includes('LOCKED') || e.message.includes('APPROVED'))) {
         return sendError(res, e.message, [], 400);
       }
       return next(e);
@@ -60,6 +60,14 @@ export class PayrollController {
     } catch (e) { return next(e); }
   }
 
+  static async submitForApproval(req: Request, res: Response, next: NextFunction) {
+    try {
+      const runId = getParam(req.params.id);
+      const run = await PayrollService.submitRunForApproval(runId, req.user?.email || 'hr');
+      return sendSuccess(res, 'Payroll run submitted to Admin for approval.', run);
+    } catch (e) { return next(e); }
+  }
+
   static async approve(req: Request, res: Response, next: NextFunction) {
     try {
       const runId = getParam(req.params.id);
@@ -68,11 +76,47 @@ export class PayrollController {
     } catch (e) { return next(e); }
   }
 
+  static async reject(req: Request, res: Response, next: NextFunction) {
+    try {
+      const runId = getParam(req.params.id);
+      const reason = req.body?.reason || req.body?.rejectionReason;
+      const run = await PayrollService.rejectRun(runId, req.user?.email || 'admin', reason);
+      return sendSuccess(res, 'Payroll run rejected and returned to HR for correction.', run);
+    } catch (e) { return next(e); }
+  }
+
   static async lock(req: Request, res: Response, next: NextFunction) {
     try {
       const runId = getParam(req.params.id);
       const run = await PayrollService.lockRun(runId, req.user?.email || 'admin');
       return sendSuccess(res, 'Payroll locked and payslips generated successfully.', run);
+    } catch (e) { return next(e); }
+  }
+
+  static async distributePayslips(req: Request, res: Response, next: NextFunction) {
+    try {
+      const runId = getParam(req.params.id);
+      const result = await PayrollService.distributePayslips(
+        runId,
+        req.user?.email || 'hr',
+        {
+          employeeIds: req.body?.employeeIds,
+          retryFailedOnly: Boolean(req.body?.retryFailedOnly),
+        }
+      );
+      return sendSuccess(
+        res,
+        `Payslip distribution completed: ${result.sentCount} sent, ${result.failedCount} failed.`,
+        result
+      );
+    } catch (e) { return next(e); }
+  }
+
+  static async deleteRun(req: Request, res: Response, next: NextFunction) {
+    try {
+      const runId = getParam(req.params.id);
+      const result = await PayrollService.deleteRun(runId);
+      return sendSuccess(res, result.message, result);
     } catch (e) { return next(e); }
   }
 }

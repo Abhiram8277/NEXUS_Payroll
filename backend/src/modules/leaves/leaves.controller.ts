@@ -51,6 +51,15 @@ export class LeavesController {
     } catch (e) { return next(e); }
   }
 
+  static async cancel(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.user) return sendError(res, 'Unauthenticated', [], 401);
+      const requestId = getParam(req.params.id);
+      const result = await LeavesService.cancelRequest(requestId, req.user);
+      return sendSuccess(res, 'Leave request cancelled successfully.', result);
+    } catch (e) { return next(e); }
+  }
+
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
       const params: any = { ...req.query };

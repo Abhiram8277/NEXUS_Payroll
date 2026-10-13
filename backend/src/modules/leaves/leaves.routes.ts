@@ -9,6 +9,8 @@ router.use(authenticate);
 // Employee portal self-service
 router.get('/my-balances', LeavesController.getMyBalances);
 router.post('/apply', LeavesController.apply);
+router.put('/:id/cancel', LeavesController.cancel);
+router.delete('/:id', LeavesController.cancel);
 
 // List requests (Employee sees own, Admin/HR sees all/filtered)
 router.get('/', LeavesController.list);

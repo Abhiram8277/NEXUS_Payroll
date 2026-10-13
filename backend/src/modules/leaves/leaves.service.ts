@@ -1,5 +1,6 @@
 import { prisma } from '../../config/prisma';
-import { LeaveRequestStatus } from '@prisma/client';
+import { LeaveRequestStatus, Role } from '@prisma/client';
+import { EmailService } from '../email/email.service';
 
 export class LeavesService {
   static calculateDays(fromDate: Date, toDate: Date): number {
@@ -20,20 +21,23 @@ export class LeavesService {
     const to = new Date(data.toDate);
 
     if (isNaN(from.getTime()) || isNaN(to.getTime())) {
-      throw new Error('Invalid date provided.');
+      const err: any = new Error('Invalid date provided.');
+      err.statusCode = 400;
+      throw err;
     }
     if (from > to) {
-      throw new Error('From date cannot be after To date.');
+      const err: any = new Error('From date cannot be after To date.');
+      err.statusCode = 400;
+      throw err;
     }
 
     const days = this.calculateDays(from, to);
     const year = from.getFullYear();
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const leaveType = await tx.leaveType.findUnique({ where: { id: data.leaveTypeId } });
       if (!leaveType) throw new Error('Leave type not found.');
 
-      // Check balance
       let balance = await tx.leaveBalance.findUnique({
         where: {
           employeeId_leaveTypeId_year: {
@@ -45,7 +49,6 @@ export class LeavesService {
       });
 
       if (!balance) {
-        // Initialize balance
         balance = await tx.leaveBalance.create({
           data: {
             employeeId: data.employeeId,
@@ -59,7 +62,6 @@ export class LeavesService {
         });
       }
 
-      // Check if exceeds available balance
       let excessLopDays = 0;
       if (leaveType.isPaid && days > balance.available) {
         excessLopDays = days - balance.available;
@@ -78,7 +80,6 @@ export class LeavesService {
         include: { leaveType: true, employee: true },
       });
 
-      // Update pending balance
       await tx.leaveBalance.update({
         where: { id: balance.id },
         data: {
@@ -89,6 +90,29 @@ export class LeavesService {
 
       return { request, excessLopDays };
     });
+
+    // Notify HR/Admin via EmailService
+    const hrUsers = await prisma.user.findMany({
+      where: { role: { in: [Role.HR, Role.ADMIN] }, isActive: true },
+      select: { email: true },
+    });
+    for (const hr of hrUsers) {
+      await EmailService.sendLeaveNotificationEmail({
+        to: hr.email,
+        employeeName: `${result.request.employee.firstName} ${result.request.employee.lastName}`,
+        leaveType: result.request.leaveType.name,
+        fromDate: from.toISOString().split('T')[0],
+        toDate: to.toISOString().split('T')[0],
+        days,
+        status: 'APPLIED',
+      }).catch(() => {});
+    }
+
+    return {
+      ...result.request,
+      request: result.request,
+      excessLopDays: result.excessLopDays,
+    };
   }
 
   static async updateStatus(
@@ -97,15 +121,21 @@ export class LeavesService {
     reviewerId: string,
     rejectionReason?: string
   ) {
-    return prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx) => {
       const req = await tx.leaveRequest.findUnique({
         where: { id: requestId },
-        include: { leaveType: true },
+        include: { leaveType: true, employee: true },
       });
-      if (!req) throw new Error('Leave request not found.');
+      if (!req) {
+        const err: any = new Error('Leave request not found.');
+        err.statusCode = 404;
+        throw err;
+      }
 
       if (req.status !== LeaveRequestStatus.APPLIED) {
-        throw new Error(`Cannot update request that is already ${req.status}`);
+        const err: any = new Error(`Cannot update request that is already ${req.status}`);
+        err.statusCode = 400;
+        throw err;
       }
 
       const year = req.fromDate.getFullYear();
@@ -153,6 +183,38 @@ export class LeavesService {
         include: { leaveType: true, employee: true },
       });
     });
+
+    if (status === 'APPROVED' || status === 'REJECTED') {
+      await EmailService.sendLeaveNotificationEmail({
+        to: updated.employee.email,
+        employeeName: `${updated.employee.firstName} ${updated.employee.lastName}`,
+        leaveType: updated.leaveType.name,
+        fromDate: updated.fromDate.toISOString().split('T')[0],
+        toDate: updated.toDate.toISOString().split('T')[0],
+        days: updated.days,
+        status,
+        rejectionReason,
+      }).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  static async cancelRequest(requestId: string, user: { id: string; email: string; role: Role; employeeId?: string }) {
+    const req = await prisma.leaveRequest.findUnique({ where: { id: requestId } });
+    if (!req) {
+      const err: any = new Error('Leave request not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (user.role === Role.EMPLOYEE && req.employeeId !== user.employeeId) {
+      const err: any = new Error('Forbidden: You can only cancel your own leave requests.');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    return this.updateStatus(requestId, 'CANCELLED', user.email);
   }
 
   static async listRequests(params: {

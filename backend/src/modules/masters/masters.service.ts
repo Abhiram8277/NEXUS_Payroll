@@ -145,7 +145,11 @@ export class MastersService {
   }
 
   static async deleteLeaveType(id: string) {
-    return prisma.leaveType.update({ where: { id }, data: { isActive: false } });
+    const reqCount = await prisma.leaveRequest.count({ where: { leaveTypeId: id } });
+    if (reqCount > 0) {
+      return prisma.leaveType.update({ where: { id }, data: { isActive: false } });
+    }
+    return prisma.leaveType.delete({ where: { id } });
   }
 
   // --- Salary Components ---
@@ -185,7 +189,11 @@ export class MastersService {
   }
 
   static async deleteSalaryComponent(id: string) {
-    return prisma.salaryComponent.update({ where: { id }, data: { isActive: false } });
+    const tplCount = await prisma.salaryTemplateComponent.count({ where: { componentId: id } });
+    if (tplCount > 0) {
+      return prisma.salaryComponent.update({ where: { id }, data: { isActive: false } });
+    }
+    return prisma.salaryComponent.delete({ where: { id } });
   }
 
   // --- Holidays ---
@@ -210,6 +218,18 @@ export class MastersService {
         date: new Date(data.date),
         description: data.description,
         locationId: data.locationId || null,
+      },
+    });
+  }
+
+  static async updateHoliday(id: string, data: any) {
+    return prisma.holiday.update({
+      where: { id },
+      data: {
+        name: data.name?.trim(),
+        date: data.date ? new Date(data.date) : undefined,
+        description: data.description,
+        locationId: data.locationId !== undefined ? (data.locationId || null) : undefined,
       },
     });
   }

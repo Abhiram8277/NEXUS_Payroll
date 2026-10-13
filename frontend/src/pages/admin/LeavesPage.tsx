@@ -90,6 +90,22 @@ export const LeavesPage: React.FC = () => {
     }
   };
 
+  const handleCancelRequest = async (id: string) => {
+    if (!window.confirm('Are you sure you want to cancel this pending leave request?')) return;
+    try {
+      setProcessingStatus(true);
+      const res = await api.put(`/leaves/${id}/cancel`);
+      if (res.data.success) {
+        showToast('Leave request cancelled and pending balance restored', 'success');
+        fetchInitialData();
+      }
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Failed to cancel leave request', 'error');
+    } finally {
+      setProcessingStatus(false);
+    }
+  };
+
   const handleApplyOnBehalf = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -166,7 +182,7 @@ export const LeavesPage: React.FC = () => {
           {/* Status filter bar */}
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold uppercase text-slate-400 mr-2">Filter Status:</span>
-            {['ALL', 'APPLIED', 'APPROVED', 'REJECTED'].map((st) => (
+            {['ALL', 'APPLIED', 'APPROVED', 'REJECTED', 'CANCELLED'].map((st) => (
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
@@ -243,6 +259,8 @@ export const LeavesPage: React.FC = () => {
                                 ? 'success'
                                 : req.status === 'REJECTED'
                                 ? 'danger'
+                                : req.status === 'CANCELLED'
+                                ? 'neutral'
                                 : 'warning'
                             }
                           >
@@ -256,7 +274,7 @@ export const LeavesPage: React.FC = () => {
                         </td>
                         <td className="px-6 py-3.5 text-right">
                           {req.status === 'APPLIED' ? (
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1.5">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -276,6 +294,14 @@ export const LeavesPage: React.FC = () => {
                                 }}
                               >
                                 <X className="w-4 h-4 mr-1" /> Reject
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleCancelRequest(req.id)}
+                                title="Cancel Leave Request"
+                              >
+                                Cancel
                               </Button>
                             </div>
                           ) : (

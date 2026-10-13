@@ -39,6 +39,7 @@ router.delete('/salary-components/:id', authorize(Role.ADMIN), MastersController
 // Holidays
 router.get('/holidays', MastersController.getHolidays);
 router.post('/holidays', authorize(Role.ADMIN), MastersController.createHoliday);
+router.put('/holidays/:id', authorize(Role.ADMIN), MastersController.updateHoliday);
 router.delete('/holidays/:id', authorize(Role.ADMIN), MastersController.deleteHoliday);
 
 export default router;

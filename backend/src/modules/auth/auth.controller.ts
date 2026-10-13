@@ -1,7 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from './auth.service';
+import { EmailService } from '../email/email.service';
 import { sendSuccess, sendError } from '../../utils/response';
-import { loginSchema, forgotPasswordSchema, resetPasswordSchema, changePasswordSchema } from './auth.validation';
+import {
+  loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  activateAccountSchema,
+  changePasswordSchema,
+} from './auth.validation';
 
 export class AuthController {
   static async login(req: Request, res: Response, next: NextFunction) {
@@ -39,8 +46,40 @@ export class AuthController {
   static async resetPassword(req: Request, res: Response, next: NextFunction) {
     try {
       const validated = resetPasswordSchema.parse(req.body);
-      const result = await AuthService.resetPassword(validated.email, validated.newPassword);
+      const result = await AuthService.resetPassword(
+        validated.token,
+        validated.newPassword,
+        validated.email
+      );
       return sendSuccess(res, result.message, result);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async activateAccount(req: Request, res: Response, next: NextFunction) {
+    try {
+      const validated = activateAccountSchema.parse(req.body);
+      const result = await AuthService.activateAccount(validated.token, validated.newPassword);
+      return sendSuccess(res, result.message, result);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async sendInvite(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await AuthService.createAndSendActivationInvite(String(req.params.userId));
+      return sendSuccess(res, 'Account activation invitation email sent.', result);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async listEmailLogs(req: Request, res: Response, next: NextFunction) {
+    try {
+      const logs = await EmailService.listLogs(100);
+      return sendSuccess(res, 'Email logs retrieved.', logs);
     } catch (error) {
       return next(error);
     }

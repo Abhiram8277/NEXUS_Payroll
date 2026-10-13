@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma';
 import { PayrollCalculationEngine, StatutoryRules, PayrollEmployeeInput } from './payroll-engine.service';
 import { StatutoryService } from '../statutory/statutory.service';
+import { EmailService } from '../email/email.service';
 import { PayrollStatus, Role } from '@prisma/client';
 
 export class PayrollService {
@@ -8,14 +9,24 @@ export class PayrollService {
    * Previews or runs payroll calculation for a month/year
    */
   static async calculateRun(month: number, year: number, preparedBy: string, isPreviewOnly = false) {
-    // 1. Check if payroll for this period already exists and is LOCKED
+    // 1. Check if payroll for this period already exists
     const existing = await prisma.payrollRun.findUnique({
       where: { month_year: { month, year } },
       include: {
         payrollEmployees: {
           include: {
-            employee: { select: { id: true, employeeId: true, firstName: true, lastName: true, department: { select: { name: true } } } },
+            employee: {
+              select: {
+                id: true,
+                employeeId: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                department: { select: { name: true } },
+              },
+            },
             components: true,
+            payslip: true,
           },
         },
       },
@@ -25,7 +36,17 @@ export class PayrollService {
       if (isPreviewOnly) {
         return existing;
       }
-      throw new Error(`Payroll for ${month}/${year} is LOCKED and cannot be recalculated.`);
+      const err: any = new Error(`Payroll for ${month}/${year} is LOCKED and cannot be recalculated.`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (existing && existing.status === PayrollStatus.APPROVED && !isPreviewOnly) {
+      const err: any = new Error(
+        `Payroll for ${month}/${year} is already APPROVED and cannot be recalculated unless rejected.`
+      );
+      err.statusCode = 400;
+      throw err;
     }
 
     // 2. Fetch statutory configurations applicable to this period
@@ -44,7 +65,7 @@ export class PayrollService {
       tds: tdsConfig?.rulesJson as any,
     };
 
-    // 3. Working days in month (standard 30 or actual days)
+    // 3. Working days in month
     const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const workingDays = lastDayOfMonth;
 
@@ -72,12 +93,20 @@ export class PayrollService {
           include: { leaveType: true },
         },
       },
+      orderBy: { employeeId: 'asc' },
     });
 
     const calculatedEmployees: Array<{
       employee: any;
       calc: any;
       input: PayrollEmployeeInput;
+    }> = [];
+
+    const unassignedEmployees: Array<{
+      id: string;
+      employeeId: string;
+      name: string;
+      department: string;
     }> = [];
 
     let totalGross = 0;
@@ -87,7 +116,12 @@ export class PayrollService {
 
     for (const emp of employees) {
       if (!emp.salary) {
-        // Skip or throw based on policy
+        unassignedEmployees.push({
+          id: emp.id,
+          employeeId: emp.employeeId,
+          name: `${emp.firstName} ${emp.lastName}`,
+          department: emp.department?.name || 'Unassigned',
+        });
         continue;
       }
 
@@ -167,12 +201,16 @@ export class PayrollService {
         totalNet,
         items,
         employees: items,
+        unassignedEmployees,
+        warnings:
+          unassignedEmployees.length > 0
+            ? [`${unassignedEmployees.length} active employee(s) do not have an assigned salary structure and were excluded from calculation.`]
+            : [],
       };
     }
 
     // Persist run in database transaction
     return prisma.$transaction(async (tx) => {
-      // Upsert payroll run record
       const run = await tx.payrollRun.upsert({
         where: { month_year: { month, year } },
         update: {
@@ -184,6 +222,7 @@ export class PayrollService {
           totalNet,
           preparedById: preparedBy,
           preparedAt: new Date(),
+          rejectionReason: null,
         },
         create: {
           month,
@@ -199,7 +238,6 @@ export class PayrollService {
         },
       });
 
-      // Clear previous unapproved employee calculations for this run
       await tx.payrollEmployee.deleteMany({ where: { payrollRunId: run.id } });
 
       for (const item of calculatedEmployees) {
@@ -219,7 +257,6 @@ export class PayrollService {
           },
         });
 
-        // Create individual components
         for (const comp of item.calc.components) {
           await tx.payrollComponent.create({
             data: {
@@ -239,8 +276,18 @@ export class PayrollService {
         include: {
           payrollEmployees: {
             include: {
-              employee: { select: { id: true, employeeId: true, firstName: true, lastName: true, department: { select: { name: true } } } },
+              employee: {
+                select: {
+                  id: true,
+                  employeeId: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  department: { select: { name: true } },
+                },
+              },
               components: true,
+              payslip: true,
             },
           },
         },
@@ -260,11 +307,13 @@ export class PayrollService {
                 employeeId: true,
                 firstName: true,
                 lastName: true,
+                email: true,
                 department: { select: { name: true } },
                 designation: { select: { name: true } },
               },
             },
             components: true,
+            payslip: true,
           },
         },
       },
@@ -278,21 +327,145 @@ export class PayrollService {
   }
 
   /**
+   * HR or Admin submits a DRAFT or REJECTED payroll run for Admin approval (transitions to REVIEW)
+   */
+  static async submitRunForApproval(id: string, submittedBy: string) {
+    const run = await prisma.payrollRun.findUnique({ where: { id } });
+    if (!run) {
+      const err: any = new Error('Payroll run not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (run.status !== PayrollStatus.DRAFT && run.status !== PayrollStatus.REJECTED) {
+      const err: any = new Error(
+        `Cannot submit payroll run with status ${run.status}. Only DRAFT or REJECTED runs can be submitted for approval.`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const updated = await prisma.payrollRun.update({
+      where: { id },
+      data: {
+        status: PayrollStatus.REVIEW,
+        submittedById: submittedBy,
+        submittedAt: new Date(),
+        rejectionReason: null,
+      },
+    });
+
+    const admins = await prisma.user.findMany({
+      where: { role: Role.ADMIN, isActive: true },
+      select: { email: true },
+    });
+    for (const admin of admins) {
+      await EmailService.sendPayrollWorkflowEmail({
+        to: admin.email,
+        month: updated.month,
+        year: updated.year,
+        action: 'SUBMITTED',
+        totalEmployees: updated.totalEmployees,
+        totalNet: updated.totalNet,
+      }).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  /**
    * Admin approves payroll run
    */
   static async approveRun(id: string, adminId: string) {
     const run = await prisma.payrollRun.findUnique({ where: { id } });
-    if (!run) throw new Error('Payroll run not found.');
-    if (run.status === PayrollStatus.LOCKED) throw new Error('Payroll run is already locked.');
+    if (!run) {
+      const err: any = new Error('Payroll run not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (run.status === PayrollStatus.LOCKED) {
+      const err: any = new Error('Payroll run is already locked.');
+      err.statusCode = 400;
+      throw err;
+    }
 
-    return prisma.payrollRun.update({
+    const updated = await prisma.payrollRun.update({
       where: { id },
       data: {
         status: PayrollStatus.APPROVED,
         approvedById: adminId,
         approvedAt: new Date(),
+        rejectionReason: null,
       },
     });
+
+    const hrUsers = await prisma.user.findMany({
+      where: { role: Role.HR, isActive: true },
+      select: { email: true },
+    });
+    for (const hr of hrUsers) {
+      await EmailService.sendPayrollWorkflowEmail({
+        to: hr.email,
+        month: updated.month,
+        year: updated.year,
+        action: 'APPROVED',
+        totalEmployees: updated.totalEmployees,
+        totalNet: updated.totalNet,
+      }).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  /**
+   * Admin rejects payroll run with a mandatory reason
+   */
+  static async rejectRun(id: string, adminId: string, reason: string) {
+    if (!reason || !reason.trim()) {
+      const err: any = new Error('A rejection reason is required when rejecting a payroll run.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const run = await prisma.payrollRun.findUnique({ where: { id } });
+    if (!run) {
+      const err: any = new Error('Payroll run not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (run.status === PayrollStatus.LOCKED) {
+      const err: any = new Error('Cannot reject a payroll run that is already LOCKED.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const updated = await prisma.payrollRun.update({
+      where: { id },
+      data: {
+        status: PayrollStatus.REJECTED,
+        rejectedById: adminId,
+        rejectedAt: new Date(),
+        rejectionReason: reason.trim(),
+      },
+    });
+
+    const hrUsers = await prisma.user.findMany({
+      where: { role: Role.HR, isActive: true },
+      select: { email: true },
+    });
+    for (const hr of hrUsers) {
+      await EmailService.sendPayrollWorkflowEmail({
+        to: hr.email,
+        month: updated.month,
+        year: updated.year,
+        action: 'REJECTED',
+        totalEmployees: updated.totalEmployees,
+        totalNet: updated.totalNet,
+        reason: reason.trim(),
+      }).catch(() => {});
+    }
+
+    return updated;
   }
 
   /**
@@ -303,8 +476,21 @@ export class PayrollService {
       where: { id },
       include: { payrollEmployees: true },
     });
-    if (!run) throw new Error('Payroll run not found.');
-    if (run.status === PayrollStatus.LOCKED) throw new Error('Payroll is already locked.');
+    if (!run) {
+      const err: any = new Error('Payroll run not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (run.status === PayrollStatus.LOCKED) {
+      const err: any = new Error('Payroll is already locked.');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (run.status !== PayrollStatus.APPROVED) {
+      const err: any = new Error('Payroll run must be APPROVED by Admin before it can be LOCKED.');
+      err.statusCode = 400;
+      throw err;
+    }
 
     return prisma.$transaction(async (tx) => {
       const locked = await tx.payrollRun.update({
@@ -313,8 +499,6 @@ export class PayrollService {
           status: PayrollStatus.LOCKED,
           lockedById: adminId,
           lockedAt: new Date(),
-          approvedById: run.approvedById || adminId,
-          approvedAt: run.approvedAt || new Date(),
         },
       });
 
@@ -333,11 +517,149 @@ export class PayrollService {
             month: run.month,
             year: run.year,
             netSalary: pe.netSalary,
+            emailStatus: 'PENDING',
           },
         });
       }
 
       return locked;
     });
+  }
+
+  /**
+   * HR or Admin distributes payslips via email after payroll is LOCKED
+   */
+  static async distributePayslips(
+    id: string,
+    senderEmail: string,
+    options: { employeeIds?: string[]; retryFailedOnly?: boolean } = {}
+  ) {
+    const run = await prisma.payrollRun.findUnique({
+      where: { id },
+      include: {
+        payrollEmployees: {
+          include: {
+            employee: true,
+            payslip: true,
+          },
+        },
+      },
+    });
+
+    if (!run) {
+      const err: any = new Error('Payroll run not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (run.status !== PayrollStatus.LOCKED) {
+      const err: any = new Error(
+        `Cannot distribute payslips for a ${run.status} payroll run. Payroll must be APPROVED and LOCKED first.`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    let targets = run.payrollEmployees.filter((pe) => Boolean(pe.payslip));
+
+    if (options.employeeIds && options.employeeIds.length > 0) {
+      const filterSet = new Set(options.employeeIds);
+      targets = targets.filter((pe) => filterSet.has(pe.employeeId) || filterSet.has(pe.employee.employeeId));
+    }
+
+    if (options.retryFailedOnly) {
+      targets = targets.filter((pe) => pe.payslip?.emailStatus === 'FAILED');
+    }
+
+    let sentCount = 0;
+    let failedCount = 0;
+    const results: Array<{
+      payslipId: string;
+      employeeId: string;
+      employeeCode: string;
+      employeeName: string;
+      email: string;
+      status: string;
+      error?: string | null;
+    }> = [];
+
+    for (const pe of targets) {
+      const ps = pe.payslip!;
+      const emp = pe.employee;
+
+      const emailLog = await EmailService.sendPayslipDeliveryEmail({
+        to: emp.email,
+        employeeName: `${emp.firstName} ${emp.lastName}`,
+        employeeCode: emp.employeeId,
+        month: run.month,
+        year: run.year,
+        payslipNumber: ps.payslipNumber,
+        netSalary: ps.netSalary,
+        payslipId: ps.id,
+      });
+
+      const deliveryStatus = emailLog.status === 'SENT' ? 'SENT' : 'FAILED';
+      if (deliveryStatus === 'SENT') sentCount++;
+      else failedCount++;
+
+      await prisma.payslip.update({
+        where: { id: ps.id },
+        data: {
+          emailStatus: deliveryStatus,
+          sentAt: deliveryStatus === 'SENT' ? new Date() : ps.sentAt,
+          emailError: emailLog.error,
+        },
+      });
+
+      results.push({
+        payslipId: ps.id,
+        employeeId: emp.id,
+        employeeCode: emp.employeeId,
+        employeeName: `${emp.firstName} ${emp.lastName}`,
+        email: emp.email,
+        status: deliveryStatus,
+        error: emailLog.error,
+      });
+    }
+
+    const updatedRun = await prisma.payrollRun.update({
+      where: { id },
+      data: {
+        payslipsSent: sentCount > 0 || run.payslipsSent,
+        payslipsSentAt: sentCount > 0 ? new Date() : run.payslipsSentAt,
+        payslipsSentById: senderEmail,
+      },
+    });
+
+    return {
+      run: updatedRun,
+      totalPayslips: targets.length,
+      sentCount,
+      failedCount,
+      results,
+    };
+  }
+
+  /**
+   * Delete a DRAFT or REJECTED payroll run
+   */
+  static async deleteRun(id: string) {
+    const run = await prisma.payrollRun.findUnique({ where: { id } });
+    if (!run) {
+      const err: any = new Error('Payroll run not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (run.status !== PayrollStatus.DRAFT && run.status !== PayrollStatus.REJECTED) {
+      const err: any = new Error(
+        `Cannot delete a payroll run with status ${run.status}. Only DRAFT or REJECTED runs can be deleted.`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    await prisma.payrollRun.delete({ where: { id } });
+    return { message: 'Draft payroll run deleted successfully.' };
   }
 }

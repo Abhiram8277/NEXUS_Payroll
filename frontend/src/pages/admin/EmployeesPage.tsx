@@ -19,10 +19,13 @@ import {
   Building,
   ChevronLeft,
   ChevronRight,
+  Trash2,
 } from 'lucide-react';
 import { Employee, Department, Designation, Location } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 export const EmployeesPage: React.FC = () => {
+  const { user } = useAuth();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [designations, setDesignations] = useState<Designation[]>([]);
@@ -110,6 +113,25 @@ export const EmployeesPage: React.FC = () => {
     e.preventDefault();
     setPage(1);
     fetchEmployees();
+  };
+
+  const handleDeleteEmployee = async (emp: Employee) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete or deactivate ${emp.firstName} ${emp.lastName} (${emp.employeeId})?`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await api.delete(`/employees/${emp.id}`);
+      if (res.data.success) {
+        showToast(res.data.message || 'Employee removed/deactivated', 'success');
+        fetchEmployees();
+      }
+    } catch (e: any) {
+      showToast(e.response?.data?.message || 'Failed to delete employee', 'error');
+    }
   };
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
@@ -288,14 +310,30 @@ export const EmployeesPage: React.FC = () => {
                       </Badge>
                     </td>
                     <td className="py-3.5 px-4 text-right">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        icon={<Eye className="w-3.5 h-3.5" />}
-                        onClick={() => navigate(`/admin/employees/${emp.id}`)}
-                      >
-                        Profile
-                      </Button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={<Eye className="w-3.5 h-3.5" />}
+                          onClick={() =>
+                            navigate(
+                              user?.role === 'HR'
+                                ? `/hr/employees/${emp.id}`
+                                : `/admin/employees/${emp.id}`
+                            )
+                          }
+                        >
+                          Profile
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteEmployee(emp)}
+                          title="Delete or Deactivate Employee"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-600" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -29,6 +29,22 @@ export class AttendanceController {
     } catch (e) { return next(e); }
   }
 
+  static async getDaily(req: Request, res: Response, next: NextFunction) {
+    try {
+      const dateStr = (req.query.date as string) || new Date().toISOString().split('T')[0];
+      const data = await AttendanceService.getDailyAttendance(dateStr);
+      return sendSuccess(res, 'Daily attendance records retrieved.', data);
+    } catch (e) { return next(e); }
+  }
+
+  static async deleteRecord(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = getParam(req.params.id);
+      const result = await AttendanceService.deleteAttendance(id);
+      return sendSuccess(res, result.message, result);
+    } catch (e) { return next(e); }
+  }
+
   static async getMonthlySummary(req: Request, res: Response, next: NextFunction) {
     try {
       const month = parseInt(req.query.month as string, 10) || new Date().getMonth() + 1;
@@ -68,14 +84,37 @@ export class AttendanceController {
     } catch (e) { return next(e); }
   }
 
+  static async downloadTemplate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const buffer = AttendanceService.generateSampleTemplateBuffer();
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="NEXUS_Attendance_Import_Template.xlsx"'
+      );
+      return res.send(buffer);
+    } catch (e) { return next(e); }
+  }
+
   static async importBulk(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.file) {
         return sendError(res, 'Please upload an Excel file (.xlsx or .xls).', [], 400);
       }
 
-      const result = await AttendanceService.importBulkAttendance(req.file.buffer || fsToBuffer(req.file.path));
-      return sendSuccess(res, 'Attendance import completed.', result);
+      const previewOnly = req.query.preview === 'true' || req.body?.preview === 'true';
+      const result = await AttendanceService.importBulkAttendance(
+        req.file.buffer || fsToBuffer(req.file.path),
+        { previewOnly }
+      );
+      return sendSuccess(
+        res,
+        previewOnly ? 'Attendance import preview generated.' : 'Attendance import completed.',
+        result
+      );
     } catch (e) { return next(e); }
   }
 }
@@ -83,6 +122,10 @@ export class AttendanceController {
 function fsToBuffer(filePath: string): Buffer {
   const fs = require('fs');
   const buffer = fs.readFileSync(filePath);
-  fs.unlinkSync(filePath);
+  try {
+    fs.unlinkSync(filePath);
+  } catch {
+    // ignore unlink error
+  }
   return buffer;
 }

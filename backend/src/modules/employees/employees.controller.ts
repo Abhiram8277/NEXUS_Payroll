@@ -106,4 +106,24 @@ export class EmployeesController {
       return next(e);
     }
   }
+
+  static async delete(req: Request, res: Response, next: NextFunction) {
+    try {
+      const targetId = getParam(req.params.id);
+      const result = await EmployeesService.deleteEmployee(targetId);
+      return sendSuccess(res, result.message, result);
+    } catch (e) {
+      return next(e);
+    }
+  }
+
+  static async deleteDocument(req: Request, res: Response, next: NextFunction) {
+    try {
+      const docId = getParam(req.params.docId);
+      const result = await EmployeesService.deleteDocument(docId);
+      return sendSuccess(res, result.message, result);
+    } catch (e) {
+      return next(e);
+    }
+  }
 }

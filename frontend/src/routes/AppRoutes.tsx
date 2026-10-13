@@ -86,9 +86,11 @@ export const AppRoutes: React.FC = () => {
         <Route path="dashboard" element={<HrDashboardPage />} />
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="employees/:id" element={<EmployeeDetailPage />} />
+        <Route path="salary" element={<SalaryStructurePage />} />
         <Route path="attendance" element={<AttendancePage />} />
         <Route path="leaves" element={<LeavesPage />} />
         <Route path="payroll" element={<PayrollPage />} />
+        <Route path="reports" element={<ReportsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
 

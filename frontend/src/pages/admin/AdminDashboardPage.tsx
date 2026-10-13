@@ -22,6 +22,7 @@ import { useNavigate } from 'react-router-dom';
 export const AdminDashboardPage: React.FC = () => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -31,36 +32,13 @@ export const AdminDashboardPage: React.FC = () => {
   const fetchDashboard = async () => {
     try {
       setLoading(true);
+      setError(null);
       const res = await api.get('/reports/dashboard/admin');
       if (res.data.success) {
         setData(res.data.data);
       }
-    } catch (err) {
-      console.warn('Backend unavailable, rendering preview metrics', err);
-      setData({
-        kpis: {
-          totalEmployees: 24,
-          activeEmployees: 24,
-          onboardingEmployees: 0,
-          departmentsCount: 4,
-          locationsCount: 2,
-          lastPayrollDisbursed: 1485600,
-          currentPayrollStatus: 'APPROVED',
-          activeLeaveRequests: 3,
-          todayAttendanceRate: 96.5,
-        },
-        departmentDistribution: [
-          { name: 'Engineering', count: 12 },
-          { name: 'Human Resources', count: 4 },
-          { name: 'Finance & Accounts', count: 3 },
-          { name: 'Operations', count: 5 },
-        ],
-        recentEmployees: [
-          { id: '1', employeeId: 'EMP-101', firstName: 'Rahul', lastName: 'Sharma', department: { name: 'Engineering' }, designation: { name: 'Senior Software Engineer' }, joiningDate: '2024-06-01' },
-          { id: '2', employeeId: 'EMP-102', firstName: 'Priya', lastName: 'Nair', department: { name: 'Engineering' }, designation: { name: 'Backend Architect' }, joiningDate: '2024-07-15' },
-          { id: '3', employeeId: 'EMP-103', firstName: 'Arjun', lastName: 'Verma', department: { name: 'Finance & Accounts' }, designation: { name: 'Payroll Specialist' }, joiningDate: '2024-08-01' },
-        ],
-      });
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Unable to load dashboard analytics from database.');
     } finally {
       setLoading(false);
     }
@@ -68,6 +46,17 @@ export const AdminDashboardPage: React.FC = () => {
 
   if (loading) {
     return <Spinner size="lg" label="Loading NEXUS Dashboard..." className="min-h-[60vh]" />;
+  }
+
+  if (error) {
+    return (
+      <Card className="p-8 text-center my-8">
+        <p className="text-rose-600 font-semibold mb-4">{error}</p>
+        <Button variant="primary" size="sm" onClick={fetchDashboard}>
+          Retry Loading Dashboard
+        </Button>
+      </Card>
+    );
   }
 
   const kpis = data?.kpis || {};

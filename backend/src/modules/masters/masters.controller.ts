@@ -147,6 +147,12 @@ export class MastersController {
       return sendSuccess(res, 'Holiday added successfully.', data, 201);
     } catch (e) { return next(e); }
   }
+  static async updateHoliday(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await MastersService.updateHoliday(getParam(req.params.id), req.body);
+      return sendSuccess(res, 'Holiday updated successfully.', data);
+    } catch (e) { return next(e); }
+  }
   static async deleteHoliday(req: Request, res: Response, next: NextFunction) {
     try {
       await MastersService.deleteHoliday(getParam(req.params.id));

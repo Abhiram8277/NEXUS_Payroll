@@ -31,7 +31,9 @@ export const documentUpload = multer({
     if (allowedMime.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only PDF, JPG, and PNG are allowed.'));
+      const err: any = new Error('Invalid file type. Only PDF, JPG, and PNG are allowed.');
+      err.statusCode = 400;
+      cb(err);
     }
   },
 });
@@ -53,7 +55,9 @@ export const excelUpload = multer({
     ) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file format. Please upload an Excel (.xlsx/.xls) or CSV file.'));
+      const err: any = new Error('Invalid file format. Please upload an Excel (.xlsx/.xls) or CSV file.');
+      err.statusCode = 400;
+      cb(err);
     }
   },
 });
