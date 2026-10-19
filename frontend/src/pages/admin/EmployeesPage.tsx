@@ -15,11 +15,14 @@ import {
   Search,
   Filter,
   Eye,
+  EyeOff,
+  Lock,
   IndianRupee,
   Building,
   ChevronLeft,
   ChevronRight,
   Trash2,
+  FolderLock,
 } from 'lucide-react';
 import { Employee, Department, Designation, Location } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -41,11 +44,13 @@ export const EmployeesPage: React.FC = () => {
   // New Employee Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     employeeId: '',
     firstName: '',
     lastName: '',
     email: '',
+    password: '',
     phone: '',
     gender: 'Male',
     departmentId: '',
@@ -59,7 +64,7 @@ export const EmployeesPage: React.FC = () => {
     bankName: '',
     status: 'ACTIVE',
     taxRegime: 'NEW',
-    monthlyGross: '50000',
+    monthlyGross: '',
   });
 
   const { showToast } = useToast();
@@ -136,10 +141,16 @@ export const EmployeesPage: React.FC = () => {
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.password || formData.password.trim().length < 8) {
+      showToast('Please enter an employee portal password (minimum 8 characters).', 'warning');
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
         ...formData,
+        password: formData.password.trim(),
         departmentId: formData.departmentId || undefined,
         designationId: formData.designationId || undefined,
         locationId: formData.locationId || undefined,
@@ -164,6 +175,7 @@ export const EmployeesPage: React.FC = () => {
           firstName: '',
           lastName: '',
           email: '',
+          password: '',
           phone: '',
           gender: 'Male',
           departmentId: '',
@@ -177,7 +189,7 @@ export const EmployeesPage: React.FC = () => {
           bankName: '',
           status: 'ACTIVE',
           taxRegime: 'NEW',
-          monthlyGross: '50000',
+          monthlyGross: '',
         });
         fetchEmployees();
       }
@@ -199,13 +211,23 @@ export const EmployeesPage: React.FC = () => {
         title="Employee Directory"
         subtitle={`Manage staff records, statutory profiles, and employment lifecycles (${totalCount} total)`}
         action={
-          <Button
-            variant="primary"
-            icon={<UserPlus className="w-4 h-4" />}
-            onClick={() => setIsModalOpen(true)}
-          >
-            Add New Employee
-          </Button>
+          user?.role === 'HR' ? (
+            <Button
+              variant="primary"
+              icon={<UserPlus className="w-4 h-4" />}
+              onClick={() => setIsModalOpen(true)}
+            >
+              Add New Employee
+            </Button>
+          ) : user?.role === 'ADMIN' ? (
+            <Button
+              variant="secondary"
+              icon={<FolderLock className="w-4 h-4" />}
+              onClick={() => navigate('/admin/users')}
+            >
+              Manage Staff & HR
+            </Button>
+          ) : undefined
         }
       />
 
@@ -420,6 +442,30 @@ export const EmployeesPage: React.FC = () => {
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
             />
+          </div>
+
+          {/* Employee Portal Login Credentials */}
+          <div className="p-3.5 rounded-xl bg-blue-50/50 border border-blue-100 space-y-1.5">
+            <div className="relative">
+              <Input
+                label="Employee Portal Login Password *"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Minimum 8 characters (e.g. NexusEmp@2026)"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                icon={<Lock className="w-4 h-4 text-slate-400" />}
+                required
+                minLength={8}
+                helperText="Initial password for the employee to sign in to their Self-Service portal"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-9 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

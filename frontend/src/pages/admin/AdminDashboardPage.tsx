@@ -16,10 +16,13 @@ import {
   ArrowRight,
   TrendingUp,
   Building,
+  FolderLock,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 export const AdminDashboardPage: React.FC = () => {
+  const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +66,24 @@ export const AdminDashboardPage: React.FC = () => {
   const departmentDistribution = data?.departmentDistribution || [];
   const recentEmployees = data?.recentEmployees || [];
 
+  const formatPayrollStatus = (status?: string) => {
+    switch (status) {
+      case 'LOCKED':
+        return 'Locked';
+      case 'APPROVED':
+        return 'Approved';
+      case 'REVIEW':
+        return 'In Review';
+      case 'REJECTED':
+        return 'Rejected';
+      case 'DRAFT':
+        return 'Draft';
+      case 'NOT_STARTED':
+      default:
+        return 'Not Started';
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -102,23 +123,10 @@ export const AdminDashboardPage: React.FC = () => {
 
         <StatCard
           title="Payroll Status"
-          value={kpis.currentPayrollStatus || 'DRAFT'}
+          value={formatPayrollStatus(kpis.currentPayrollStatus)}
           subtitle={`Period: ${kpis.currentPayrollPeriod || 'N/A'}`}
           icon={<Receipt className="w-5 h-5" />}
           iconBg="bg-cyan-50 text-cyan-600"
-          badge={
-            <Badge
-              variant={
-                kpis.currentPayrollStatus === 'LOCKED'
-                  ? 'success'
-                  : kpis.currentPayrollStatus === 'APPROVED'
-                  ? 'info'
-                  : 'warning'
-              }
-            >
-              {kpis.currentPayrollStatus}
-            </Badge>
-          }
         />
 
         <StatCard
@@ -211,21 +219,39 @@ export const AdminDashboardPage: React.FC = () => {
               <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-amber-600 group-hover:translate-x-1 transition-all" />
             </button>
 
-            <button
-              onClick={() => navigate('/admin/employees')}
-              className="w-full flex items-center justify-between p-3.5 rounded-xl bg-slate-50 hover:bg-blue-50/50 border border-slate-200/80 hover:border-blue-200 transition-all text-left cursor-pointer group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-100 text-blue-700">
-                  <Users className="w-4 h-4" />
+            {user?.role === 'ADMIN' ? (
+              <button
+                onClick={() => navigate('/admin/users')}
+                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-slate-50 hover:bg-blue-50/50 border border-slate-200/80 hover:border-blue-200 transition-all text-left cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-100 text-blue-700">
+                    <FolderLock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-800">Manage Staff & HR</h4>
+                    <p className="text-xs text-slate-500">Create HR managers & permissions</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-800">Add New Employee</h4>
-                  <p className="text-xs text-slate-500">Onboard staff with salary</p>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+              </button>
+            ) : (
+              <button
+                onClick={() => navigate('/admin/employees')}
+                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-slate-50 hover:bg-blue-50/50 border border-slate-200/80 hover:border-blue-200 transition-all text-left cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-100 text-blue-700">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-800">Add New Employee</h4>
+                    <p className="text-xs text-slate-500">Onboard staff with salary</p>
+                  </div>
                 </div>
-              </div>
-              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
-            </button>
+                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+              </button>
+            )}
           </div>
         </Card>
       </div>

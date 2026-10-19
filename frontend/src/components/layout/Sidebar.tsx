@@ -28,6 +28,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const adminNav = [
     { name: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
+    { name: 'Users & Staff', path: '/admin/users', icon: FolderLock },
     { name: 'Employees', path: '/admin/employees', icon: Users },
     { name: 'Salary Structures', path: '/admin/salary', icon: BadgePercent },
     { name: 'Attendance', path: '/admin/attendance', icon: CalendarCheck2 },

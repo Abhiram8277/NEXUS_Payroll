@@ -18,7 +18,8 @@
     "test": "npm --workspace=backend test",
     "prisma:generate": "npx prisma generate --schema=./prisma/schema.prisma",
     "prisma:push": "npx prisma db push --schema=./prisma/schema.prisma",
-    "prisma:seed": "node scripts/run-seed.js"
+    "prisma:seed": "node scripts/run-seed.js",
+    "db:clean": "node scripts/clean-db.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

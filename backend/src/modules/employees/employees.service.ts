@@ -117,7 +117,16 @@ export class EmployeesService {
 
   static async createEmployee(data: any) {
     let createdNewUserId: string | null = null;
-    const tempPass = data.password || 'Nexus@12345';
+    const tempPass =
+      data.password && typeof data.password === 'string' && data.password.trim()
+        ? data.password.trim()
+        : 'Nexus@12345';
+
+    if (tempPass.length < 8) {
+      const err: any = new Error('Employee portal password must be at least 8 characters long.');
+      err.statusCode = 400;
+      throw err;
+    }
 
     const employee = await prisma.$transaction(async (tx) => {
       // Check duplicate employeeId or email

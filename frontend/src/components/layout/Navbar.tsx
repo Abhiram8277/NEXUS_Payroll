@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Menu, LogOut, ChevronDown, Building2, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../../services/api';
 
 interface NavbarProps {
   onToggleSidebar: () => void;
@@ -11,6 +12,22 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [companyName, setCompanyName] = useState('NEXUS');
+  const [financialYear, setFinancialYear] = useState('FY 2026-27');
+
+  useEffect(() => {
+    api
+      .get('/company')
+      .then((res) => {
+        if (res.data.success && res.data.data?.name) {
+          setCompanyName(res.data.data.name);
+          if (res.data.data.financialYear) {
+            setFinancialYear(`FY ${res.data.data.financialYear}`);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -37,9 +54,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
 
         <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 font-medium bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/60">
           <Building2 className="w-3.5 h-3.5 text-cyan-600" />
-          <span>NEXUS Technologies Pvt Ltd</span>
+          <span>{companyName}</span>
           <span className="text-slate-300">•</span>
-          <span className="text-slate-600 font-semibold">FY 2026-27</span>
+          <span className="text-slate-600 font-semibold">{financialYear}</span>
         </div>
       </div>
 

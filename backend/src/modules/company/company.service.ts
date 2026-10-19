@@ -2,21 +2,30 @@ import { prisma } from '../../config/prisma';
 
 export class CompanyService {
   static async getCompany() {
-    let company = await prisma.company.findFirst();
-    if (!company) {
-      company = await prisma.company.create({
-        data: {
-          name: 'NEXUS Technologies Pvt Ltd',
-          tagline: 'Payroll, without the paperwork.',
-          country: 'India',
-        },
-      });
-    }
-    return company;
+    return prisma.company.findFirst();
   }
 
   static async updateCompany(data: any) {
-    const existing = await this.getCompany();
+    let existing = await prisma.company.findFirst();
+    if (!existing) {
+      return prisma.company.create({
+        data: {
+          name: data.name || 'My Organization',
+          tagline: data.tagline || 'Payroll, without the paperwork.',
+          country: data.country || 'India',
+          email: data.email,
+          phone: data.phone,
+          address: data.address,
+          city: data.city,
+          state: data.state,
+          pinCode: data.pinCode,
+          pan: data.pan,
+          tan: data.tan,
+          financialYear: data.financialYear || '2026-2027',
+          payrollFrequency: data.payrollFrequency || 'MONTHLY',
+        },
+      });
+    }
     return prisma.company.update({
       where: { id: existing.id },
       data: {

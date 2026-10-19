@@ -201,6 +201,42 @@ export const CompanySettingsPage: React.FC = () => {
           </Button>
         </div>
       </form>
+
+      {/* Production Clean Reset */}
+      <Card orientation="vertical" title="System Maintenance & Production Reset">
+        <div className="p-6 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h4 className="text-sm font-bold text-rose-700">Wipe All Data & Start Fresh (Factory Reset)</h4>
+              <p className="text-xs text-slate-500 mt-1 max-w-xl">
+                Permanently wipes all historical demo data, employees, attendances, payroll runs, and users.
+                After reset, you can create your organization and primary administrator account from scratch.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              className="border-rose-300 text-rose-700 hover:bg-rose-50 shrink-0"
+              onClick={async () => {
+                const conf = window.prompt(
+                  'DANGER: This will permanently delete ALL data. To confirm, type: WIPE_ALL_DATA_START_FRESH'
+                );
+                if (conf === 'WIPE_ALL_DATA_START_FRESH') {
+                  try {
+                    await api.post('/auth/reset-database', { confirmation: conf });
+                    alert('System reset successfully. Redirecting to Initial Setup...');
+                    localStorage.clear();
+                    window.location.href = '/login?mode=setup';
+                  } catch (e: any) {
+                    alert(e.response?.data?.message || 'Failed to reset system.');
+                  }
+                }
+              }}
+            >
+              Reset System for Production
+            </Button>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 };

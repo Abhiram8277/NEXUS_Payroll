@@ -10,7 +10,7 @@ router.use(authenticate);
 router.get('/me', EmployeesController.getMyProfile);
 router.get('/', authorize(Role.ADMIN, Role.HR), EmployeesController.list);
 router.get('/:id', EmployeesController.getById); // Internal check for EMPLOYEE self
-router.post('/', authorize(Role.ADMIN, Role.HR), EmployeesController.create);
+router.post('/', authorize(Role.HR), EmployeesController.create);
 router.put('/:id', authorize(Role.ADMIN, Role.HR), EmployeesController.update);
 router.delete('/:id', authorize(Role.ADMIN, Role.HR), EmployeesController.delete);
 router.post(

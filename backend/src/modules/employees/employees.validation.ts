@@ -25,7 +25,7 @@ export const createEmployeeSchema = z.object({
   status: z.enum(['ONBOARDING', 'ACTIVE', 'EXITED']).default('ACTIVE'),
   taxRegime: z.enum(['OLD', 'NEW']).default('NEW'),
   createUserAccount: z.boolean().default(true),
-  password: z.string().nullable().optional().or(z.literal('')),
+  password: z.string().min(8, 'Password must be at least 8 characters long').optional().or(z.literal('')),
   monthlyGross: z.any().optional(),
 });
 

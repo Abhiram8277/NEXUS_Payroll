@@ -22,6 +22,12 @@ describe('NEXUS Master Modification Comprehensive Test Suite', () => {
   let emp2Code: string;
 
   beforeAll(async () => {
+    const adminHash = await bcrypt.hash('Admin@12345', 10);
+    await prisma.user.updateMany({
+      where: { email: 'admin@nexuspayroll.com' },
+      data: { passwordHash: adminHash, isActive: true },
+    });
+
     const hrHash = await bcrypt.hash('Hr@12345', 10);
     await prisma.user.updateMany({
       where: { email: 'hr@nexuspayroll.com' },
@@ -569,15 +575,29 @@ describe('NEXUS Master Modification Comprehensive Test Suite', () => {
         .send({ status: 'ACTIVE' });
       await prisma.employee.update({ where: { id: emp2Id }, data: { exitDate: null } });
 
-      // Create temporary employee with no payroll history -> hard-deleted
-      const tempEmpRes = await request(app)
+      // Verify Admin cannot create employee directly (strictly HR only)
+      const adminEmpAttempt = await request(app)
         .post('/api/v1/employees')
         .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          employeeId: 'EMP-DENIED-ADMIN',
+          firstName: 'Denied',
+          lastName: 'Admin',
+          email: 'denied.admin@nexuspayroll.com',
+          password: 'Password@123',
+        });
+      expect(adminEmpAttempt.status).toBe(403);
+
+      // Create temporary employee as HR with custom password -> succeeds
+      const tempEmpRes = await request(app)
+        .post('/api/v1/employees')
+        .set('Authorization', `Bearer ${hrToken}`)
         .send({
           employeeId: 'EMP-TEMP-999',
           firstName: 'Temp',
           lastName: 'User',
           email: 'temp.user999@nexuspayroll.com',
+          password: 'CustomPass@123',
         });
       expect(tempEmpRes.status).toBe(201);
       const tempId = tempEmpRes.body.data.id;

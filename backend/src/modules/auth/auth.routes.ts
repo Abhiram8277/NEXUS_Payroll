@@ -13,13 +13,17 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+router.get('/system-status', AuthController.getSystemStatus);
+router.post('/setup-admin', authLimiter, AuthController.setupAdmin);
 router.post('/login', authLimiter, AuthController.login);
 router.post('/forgot-password', authLimiter, AuthController.forgotPassword);
 router.post('/reset-password', authLimiter, AuthController.resetPassword);
 router.post('/activate-account', authLimiter, AuthController.activateAccount);
+router.post('/reset-database', authLimiter, AuthController.resetDatabase);
 router.get('/me', authenticate, AuthController.me);
 router.post('/change-password', authenticate, AuthController.changePassword);
 router.post('/invite/:userId', authenticate, authorize('ADMIN', 'HR'), AuthController.sendInvite);
 router.get('/email-logs', authenticate, authorize('ADMIN', 'HR'), AuthController.listEmailLogs);
 
 export default router;
+

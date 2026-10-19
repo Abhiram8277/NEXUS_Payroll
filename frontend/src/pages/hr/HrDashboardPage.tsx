@@ -10,6 +10,7 @@ import { Spinner } from '../../components/common/Spinner';
 import { useToast } from '../../context/ToastContext';
 import {
   Users,
+  UserPlus,
   CalendarCheck2,
   CalendarRange,
   Receipt,
@@ -79,6 +80,15 @@ export const HrDashboardPage: React.FC = () => {
       <PageHeader
         title={`Welcome back, ${user?.name}`}
         description="Here is your HR & Payroll operations overview for today."
+        action={
+          <Button
+            variant="primary"
+            icon={<UserPlus className="w-4 h-4" />}
+            onClick={() => navigate('/hr/employees')}
+          >
+            Add New Employee
+          </Button>
+        }
       />
 
       {/* KPI Cards */}

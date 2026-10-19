@@ -93,7 +93,26 @@ export class PayslipsService {
 
   static async generatePDF(payslipId: string): Promise<{ buffer: Buffer; fileName: string }> {
     const payslip = await this.getPayslipById(payslipId);
-    const company = await CompanyService.getCompany();
+    const rawCompany = await CompanyService.getCompany();
+    const company = rawCompany || {
+      id: 'default-org',
+      name: 'NEXUS Payroll',
+      tagline: 'Payroll, without the paperwork.',
+      address: '',
+      city: '',
+      state: '',
+      country: 'India',
+      pinCode: '',
+      email: '',
+      phone: '',
+      pan: '',
+      tan: '',
+      financialYear: '2026-2027',
+      payrollFrequency: 'MONTHLY',
+      logo: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
 
     const buffer = await PDFService.generatePayslipPDF({
       company,

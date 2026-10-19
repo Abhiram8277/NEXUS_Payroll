@@ -20,6 +20,7 @@ import { PayrollPage } from '../pages/admin/PayrollPage';
 import { MastersPage } from '../pages/admin/MastersPage';
 import { ReportsPage } from '../pages/admin/ReportsPage';
 import { CompanySettingsPage } from '../pages/admin/CompanySettingsPage';
+import { UsersPage } from '../pages/admin/UsersPage';
 
 // HR pages
 import { HrDashboardPage } from '../pages/hr/HrDashboardPage';
@@ -47,6 +48,7 @@ export const AppRoutes: React.FC = () => {
     <Routes>
       {/* Public routes */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/setup" element={<LoginPage />} />
       <Route path="/forbidden" element={<ForbiddenPage />} />
 
       {/* Root redirect */}
@@ -62,6 +64,7 @@ export const AppRoutes: React.FC = () => {
         }
       >
         <Route path="dashboard" element={<AdminDashboardPage />} />
+        <Route path="users" element={<UsersPage />} />
         <Route path="employees" element={<EmployeesPage />} />
         <Route path="employees/:id" element={<EmployeeDetailPage />} />
         <Route path="salary" element={<SalaryStructurePage />} />

@@ -99,4 +99,33 @@ export class AuthController {
       return next(error);
     }
   }
+
+  static async getSystemStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const status = await AuthService.getSystemStatus();
+      return sendSuccess(res, 'System status retrieved.', status);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async setupAdmin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await AuthService.setupAdmin(req.body);
+      return sendSuccess(res, 'Organization and administrator configured successfully!', result, 201);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async resetDatabase(req: Request, res: Response, next: NextFunction) {
+    try {
+      const confirmPhrase = req.body.confirmation || req.body.confirm;
+      const result = await AuthService.resetDatabase(confirmPhrase);
+      return sendSuccess(res, result.message, result);
+    } catch (error) {
+      return next(error);
+    }
+  }
 }
+

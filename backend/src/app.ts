@@ -17,6 +17,7 @@ import payrollRoutes from './modules/payroll/payroll.routes';
 import statutoryRoutes from './modules/statutory/statutory.routes';
 import payslipsRoutes from './modules/payslips/payslips.routes';
 import reportsRoutes from './modules/reports/reports.routes';
+import usersRoutes from './modules/users/users.routes';
 
 const app = express();
 
@@ -80,6 +81,7 @@ apiV1.use('/leaves', leavesRoutes);
 apiV1.use('/payroll', payrollRoutes);
 apiV1.use('/payslips', payslipsRoutes);
 apiV1.use('/reports', reportsRoutes);
+apiV1.use('/users', usersRoutes);
 
 app.use('/api/v1', apiV1);
 
