@@ -23,6 +23,7 @@ import {
   Eye,
   EyeOff,
   Building,
+  Mail,
 } from 'lucide-react';
 
 interface SystemUser {
@@ -222,6 +223,15 @@ export const UsersPage: React.FC = () => {
       }
     } catch (err: any) {
       showToast(err.response?.data?.message || 'Failed to delete user', 'error');
+    }
+  };
+
+  const handleSendInvite = async (user: SystemUser) => {
+    try {
+      const res = await api.post(`/auth/invite/${user.id}`);
+      showToast(res.data?.message || `Activation invite email sent to ${user.email}`, 'success');
+    } catch (err: any) {
+      showToast(err.response?.data?.message || 'Failed to send activation email', 'error');
     }
   };
 
@@ -451,6 +461,13 @@ export const UsersPage: React.FC = () => {
                             className="p-1.5 rounded-lg text-slate-500 hover:text-cyan-600 hover:bg-cyan-50 transition-colors cursor-pointer"
                           >
                             <KeyRound className="w-4 h-4" />
+                          </button>
+                          <button
+                            title="Send / Resend Activation Invite Email"
+                            onClick={() => handleSendInvite(u)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
+                          >
+                            <Mail className="w-4 h-4" />
                           </button>
                           {!isCurrent && (
                             <button

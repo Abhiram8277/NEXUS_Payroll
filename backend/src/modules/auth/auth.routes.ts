@@ -24,6 +24,8 @@ router.get('/me', authenticate, AuthController.me);
 router.post('/change-password', authenticate, AuthController.changePassword);
 router.post('/invite/:userId', authenticate, authorize('ADMIN', 'HR'), AuthController.sendInvite);
 router.get('/email-logs', authenticate, authorize('ADMIN', 'HR'), AuthController.listEmailLogs);
+router.get('/email-status', authenticate, authorize('ADMIN'), AuthController.getEmailStatus);
+router.post('/test-email', authenticate, authorize('ADMIN'), AuthController.sendTestEmail);
 
 export default router;
 

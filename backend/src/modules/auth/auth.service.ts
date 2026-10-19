@@ -6,6 +6,10 @@ import { config } from '../../config';
 import { EmailService } from '../email/email.service';
 
 export class AuthService {
+  private static getFrontendUrl(): string {
+    return config.frontendUrl || 'http://localhost:5173';
+  }
+
   private static hashToken(rawToken: string): string {
     return crypto.createHash('sha256').update(rawToken).digest('hex');
   }
@@ -149,13 +153,24 @@ export class AuthService {
       },
     });
 
-    await EmailService.sendPasswordResetEmail({
+    const emailLog = await EmailService.sendPasswordResetEmail({
       to: user.email,
       name: user.name,
       resetToken: rawToken,
     });
 
-    return { message: genericMessage };
+    const isSimulated = (emailLog.metadata as any)?.delivery?.mode === 'SIMULATED';
+
+    return {
+      message: genericMessage,
+      ...(process.env.NODE_ENV !== 'production' && isSimulated
+        ? {
+            devNotice: 'SMTP is not configured in .env. Password reset token generated in simulated mode.',
+            devToken: rawToken,
+            devResetLink: `${this.getFrontendUrl()}/login?mode=reset&token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(user.email)}`,
+          }
+        : {}),
+    };
   }
 
   /**

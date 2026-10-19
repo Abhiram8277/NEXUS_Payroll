@@ -42,6 +42,7 @@ export const LoginPage: React.FC = () => {
   const [tokenInput, setTokenInput] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [devResetUrl, setDevResetUrl] = useState('');
 
   // Initial Setup State
   const [setupForm, setSetupForm] = useState({
@@ -246,11 +247,20 @@ export const LoginPage: React.FC = () => {
     setIsLoading(true);
 
     try {
+      setDevResetUrl('');
       const res = await api.post('/auth/forgot-password', { email: resetEmail });
-      setSuccessMessage(
-        res.data?.message ||
-          'If an account with that email exists, password reset instructions have been sent.'
-      );
+      const devLink = res.data?.data?.devResetLink;
+      if (devLink) {
+        setDevResetUrl(devLink);
+        setSuccessMessage(
+          'Password reset request received. (Simulated Mode: Direct link available below)'
+        );
+      } else {
+        setSuccessMessage(
+          res.data?.message ||
+            'If an account with that email exists, password reset instructions have been sent.'
+        );
+      }
     } catch (err: any) {
       setErrorMessage(err.response?.data?.message || 'Unable to process password reset request.');
     } finally {
@@ -671,6 +681,24 @@ export const LoginPage: React.FC = () => {
                 icon={<Mail className="w-4 h-4 text-slate-400" />}
                 required
               />
+
+              {devResetUrl && (
+                <div className="p-3 bg-cyan-50 border border-cyan-200 rounded-xl text-xs text-cyan-950 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-cyan-900">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-600" />
+                    Simulated Email Mode Active
+                  </div>
+                  <p className="text-[11px] text-cyan-800">
+                    SMTP is not configured in .env. You can proceed with password reset directly:
+                  </p>
+                  <a
+                    href={devResetUrl}
+                    className="inline-block mt-1 font-bold text-cyan-700 hover:text-cyan-900 underline"
+                  >
+                    Click here to reset password directly →
+                  </a>
+                </div>
+              )}
 
               <Button
                 type="submit"

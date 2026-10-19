@@ -1,4 +1,6 @@
+import nodemailer, { Transporter } from 'nodemailer';
 import { prisma } from '../../config/prisma';
+import { config } from '../../config';
 
 export interface SendEmailOptions {
   to: string;
@@ -9,36 +11,157 @@ export interface SendEmailOptions {
 }
 
 export class EmailService {
+  private static transporter: Transporter | null = null;
+
   private static getFrontendUrl(): string {
-    return process.env.FRONTEND_URL || 'http://localhost:5173';
+    return config.frontendUrl || 'http://localhost:5173';
+  }
+
+  /**
+   * Initializes or returns the nodemailer transporter.
+   * If SMTP host/user or service is configured in config.email, creates a real transport.
+   */
+  private static getTransporter(): Transporter | null {
+    const { host, port, secure, user, pass, service } = config.email;
+
+    if (user && pass && (host || service)) {
+      if (!this.transporter) {
+        if (service) {
+          this.transporter = nodemailer.createTransport({
+            service,
+            auth: { user, pass },
+          });
+        } else {
+          this.transporter = nodemailer.createTransport({
+            host,
+            port,
+            secure,
+            auth: { user, pass },
+            tls: {
+              rejectUnauthorized: false,
+            },
+          });
+        }
+      }
+      return this.transporter;
+    }
+
+    return null;
+  }
+
+  /**
+   * Resets cached transporter (useful after editing credentials)
+   */
+  static resetTransporter() {
+    this.transporter = null;
+  }
+
+  /**
+   * Check connection status of SMTP
+   */
+  static async verifyConnection(): Promise<{
+    configured: boolean;
+    valid: boolean;
+    host?: string;
+    user?: string;
+    message: string;
+    details?: string;
+  }> {
+    const { host, user, pass, service } = config.email;
+    const isConfigured = Boolean(user && pass && (host || service));
+
+    if (!isConfigured) {
+      return {
+        configured: false,
+        valid: false,
+        message: 'SMTP credentials are not configured in .env',
+        details: 'To send real emails, set SMTP_HOST (or SMTP_SERVICE=gmail), SMTP_PORT, SMTP_USER, and SMTP_PASS in your .env file.',
+      };
+    }
+
+    try {
+      const transporter = this.getTransporter();
+      if (!transporter) {
+        return {
+          configured: false,
+          valid: false,
+          message: 'Transporter could not be created from configuration.',
+        };
+      }
+
+      await transporter.verify();
+      return {
+        configured: true,
+        valid: true,
+        host: host || service,
+        user,
+        message: 'SMTP server is reachable and credentials are verified successfully.',
+      };
+    } catch (err: any) {
+      let advice = '';
+      if (err.message?.includes('Username and Password not accepted') || err.code === 'EAUTH') {
+        advice = 'Authentication failed. If using Gmail, you must use a 16-character App Password (Google Account > Security > 2-Step Verification > App Passwords), NOT your normal email password.';
+      } else if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
+        advice = 'Could not connect to SMTP server. Please verify SMTP_HOST and SMTP_PORT, and check your network/firewall.';
+      }
+
+      return {
+        configured: true,
+        valid: false,
+        host: host || service,
+        user,
+        message: err.message || 'SMTP connection verification failed.',
+        details: advice || err.toString(),
+      };
+    }
   }
 
   /**
    * Sends a transactional email and records it in EmailLog.
-   * Supports real webhook/SMTP relay when configured, and safe database outbox persistence.
-   * If recipient ends with `.invalid` or starts with `fail-delivery@`, marks status as FAILED to support error & retry testing.
+   * Uses real SMTP relay when configured, or logs to database outbox in development.
    */
   static async sendEmail(options: SendEmailOptions) {
     const { to, subject, template, htmlBody, metadata } = options;
 
     let status = 'SENT';
     let errorMsg: string | null = null;
+    let deliveryInfo: any = {};
 
     try {
       if (!to || !to.includes('@') || to.endsWith('.invalid') || to.startsWith('fail-delivery@')) {
         throw new Error(`Invalid or unreachable recipient address: ${to}`);
       }
 
-      // Optional webhook/HTTP transactional email provider (e.g., Resend / SendGrid / custom relay)
-      if (process.env.EMAIL_WEBHOOK_URL && process.env.NODE_ENV === 'production') {
-        const response = await fetch(process.env.EMAIL_WEBHOOK_URL, {
+      const transporter = this.getTransporter();
+
+      if (transporter) {
+        // Real SMTP Delivery
+        const fromAddress = config.email.from;
+        const info = await transporter.sendMail({
+          from: fromAddress,
+          to,
+          subject,
+          html: htmlBody,
+          text: htmlBody.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+        });
+
+        deliveryInfo = {
+          mode: 'SMTP',
+          messageId: info.messageId,
+          response: info.response,
+        };
+
+        console.log(`[NEXUS EMAIL] Successfully sent email to ${to} via SMTP (Message-ID: ${info.messageId})`);
+      } else if (config.email.webhookUrl && config.nodeEnv === 'production') {
+        // Optional webhook/HTTP transactional email provider
+        const response = await fetch(config.email.webhookUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(process.env.EMAIL_API_KEY ? { Authorization: `Bearer ${process.env.EMAIL_API_KEY}` } : {}),
+            ...(config.email.apiKey ? { Authorization: `Bearer ${config.email.apiKey}` } : {}),
           },
           body: JSON.stringify({
-            from: process.env.EMAIL_FROM || 'NEXUS Payroll <no-reply@nexuspayroll.in>',
+            from: config.email.from,
             to,
             subject,
             html: htmlBody,
@@ -47,10 +170,29 @@ export class EmailService {
         if (!response.ok) {
           throw new Error(`Email provider returned HTTP ${response.status}`);
         }
+        deliveryInfo = { mode: 'WEBHOOK', status: response.status };
+      } else {
+        // Safe outbox simulation when SMTP is not configured
+        deliveryInfo = {
+          mode: 'SIMULATED',
+          notice: 'SMTP credentials not configured in .env. Logged to database outbox.',
+        };
+
+        console.log(`\n================== [NEXUS EMAIL OUTBOX] ==================`);
+        console.log(`📨 Recipient: ${to}`);
+        console.log(`📋 Subject:   ${subject}`);
+        console.log(`🏷️  Template:  ${template}`);
+        console.log(`⚠️  Status:    SMTP not configured in .env (SIMULATED OUTBOX)`);
+        if (metadata && (metadata.activationLink || metadata.resetLink || metadata.resetToken)) {
+          console.log(`🔗 Link/Token: ${metadata.activationLink || metadata.resetLink || metadata.resetToken}`);
+        }
+        console.log(`💡 To deliver real emails to inboxes, set SMTP_HOST & SMTP_PASS in .env`);
+        console.log(`==========================================================\n`);
       }
     } catch (err: any) {
       status = 'FAILED';
       errorMsg = err.message || 'Email delivery failed';
+      console.error(`[NEXUS EMAIL ERROR] Failed to send email to ${to}:`, err.message);
     }
 
     const log = await prisma.emailLog.create({
@@ -61,11 +203,38 @@ export class EmailService {
         htmlBody,
         status,
         error: errorMsg,
-        metadata: metadata || {},
+        metadata: {
+          ...(metadata || {}),
+          delivery: deliveryInfo,
+        },
       },
     });
 
     return log;
+  }
+
+  static async sendTestEmail(targetEmail: string) {
+    const timestamp = new Date().toLocaleString();
+    const htmlBody = `
+      <div style="font-family: Inter, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px;">
+        <h2 style="color: #2563eb; margin-bottom: 8px;">NEXUS SMTP Test Email</h2>
+        <p style="color: #475569;">Hello,</p>
+        <p style="color: #475569;">If you are reading this email, your NEXUS SMTP configuration is working perfectly!</p>
+        <div style="background: #f8fafc; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #cbd5e1;">
+          <p style="margin: 0; color: #0f172a; font-size: 14px;"><strong>Sent At:</strong> ${timestamp}</p>
+          <p style="margin: 4px 0 0 0; color: #0f172a; font-size: 14px;"><strong>Sender:</strong> ${config.email.from}</p>
+        </div>
+        <p style="color: #64748b; font-size: 12px;">NEXUS — Payroll, without the paperwork.</p>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to: targetEmail,
+      subject: `NEXUS SMTP Test — ${timestamp}`,
+      template: 'TEST_EMAIL',
+      htmlBody,
+      metadata: { test: true },
+    });
   }
 
   static async sendWelcomeActivationEmail(params: {

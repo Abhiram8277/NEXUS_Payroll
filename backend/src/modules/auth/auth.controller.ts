@@ -85,6 +85,36 @@ export class AuthController {
     }
   }
 
+  static async getEmailStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const status = await EmailService.verifyConnection();
+      return sendSuccess(res, status.message, status);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async sendTestEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { email } = req.body;
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        return sendError(res, 'A valid recipient email address is required.', [], 400);
+      }
+      const log = await EmailService.sendTestEmail(email.trim());
+      if (log.status === 'FAILED') {
+        return sendError(
+          res,
+          `Failed to deliver email: ${log.error || 'SMTP delivery error'}. Check server logs for details.`,
+          [log.error || 'SMTP delivery error'],
+          400
+        );
+      }
+      return sendSuccess(res, `Test email dispatched to ${email}.`, log);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
   static async changePassword(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) return sendError(res, 'Unauthenticated', [], 401);
